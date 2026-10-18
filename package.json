@@ -1,0 +1,27 @@
+{
+ "dependencies": {
+  "next": "^15.0.0",
+  "react": "^19.0.0",
+  "react-dom": "^19.0.0"
+ },
+ "description": "One-click pre-launch audit for Vercel/Next.js apps \u2014 prototype",
+ "devDependencies": {
+  "@types/node": "^22.0.0",
+  "@types/react": "^19.0.0",
+  "typescript": "^5.6.0"
+ },
+ "engines": {
+  "node": ">=20"
+ },
+ "name": "prelaunch-check",
+ "private": true,
+ "scripts": {
+  "build": "next build",
+  "dev": "next dev",
+  "scan": "node scripts/scan-once.ts",
+  "start": "next start",
+  "test": "node scripts/test-scan.ts"
+ },
+ "version": "0.1.0",
+ "type": "module"
+}
