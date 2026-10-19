@@ -9,6 +9,7 @@
 
 import type { Check, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
 import { registry } from "./checks/index.ts";
+import { assertSafeHostname } from "./ssrf.ts";
 
 export const CHECK_TIMEOUT_MS = 15_000;
 export const TOTAL_BUDGET_MS = 45_000;
@@ -79,6 +80,9 @@ export async function runScan(
   id: string,
 ): Promise<ScanResult> {
   const target = normalizeUrl(rawUrl);
+  // Fail fast on SSRF targets (loopback/metadata/private). Every individual
+  // request is re-validated in cachedGet too; this gives a clean early error.
+  await assertSafeHostname(new URL(target).hostname);
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
   const ctx: ScanContext = { target, mode, cache: new Map() };

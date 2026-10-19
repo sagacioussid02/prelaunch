@@ -73,19 +73,50 @@ export interface ScanResult {
   checkTimings: Record<string, number>;
 }
 
-/** Fetch with a hard per-request timeout. */
+import { assertSafeHostname, MAX_REDIRECT_HOPS } from "../ssrf.ts";
+
+/** Fetch with a hard per-request timeout.
+ *
+ * Redirects are followed manually (never `redirect: "follow"`) so the SSRF
+ * guard re-validates every hop: a redirect from a public host to an
+ * internal/metadata address is rejected instead of followed.
+ */
 export async function fetchWithTimeout(
   url: string,
   timeoutMs: number,
   init: RequestInit = {},
 ): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal, redirect: "follow" });
-  } finally {
-    clearTimeout(timer);
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    const parsed = new URL(current);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error(`SSRF guard: unsupported protocol (${parsed.protocol})`);
+    }
+    await assertSafeHostname(parsed.hostname);
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(current, {
+        ...init,
+        signal: ctrl.signal,
+        redirect: "manual",
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const location = res.headers.get("location");
+    if (res.status >= 300 && res.status < 400 && location) {
+      // Drain before hopping so sockets aren't leaked.
+      await res.arrayBuffer().catch(() => {});
+      current = new URL(location, current).toString();
+      continue;
+    }
+    return res;
   }
+  throw new Error("SSRF guard: too many redirects");
 }
 
 /** Fetch once per scan and cache the result (status, headers, text body). */

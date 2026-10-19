@@ -142,10 +142,6 @@ export function renderReport(result: ScanResult, opts: { baseUrl: string }): str
   <div class="cta">
     <div style="font-weight:700;font-size:18px">Monitor every deploy — coming soon</div>
     <div style="color:#cbd5e1;font-size:14px;margin-top:4px">Auto-audit each production deploy, alert on new blockers.</div>
-    <form action="${opts.baseUrl}/api/notify" method="post">
-      <input type="email" name="email" placeholder="you@example.com" required>
-      <button type="submit">Notify me</button>
-    </form>
   </div>
 
   <div class="meta">

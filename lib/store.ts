@@ -8,6 +8,7 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { ScanResult } from "../lib/checks/types.ts";
 
 const DATA_DIR = process.env.PRELAUNCH_DATA_DIR ?? join(process.cwd(), ".data");
@@ -32,8 +33,7 @@ export async function getScan(id: string): Promise<ScanResult | null> {
 }
 
 export function newScanId(): string {
-  return (
-    Date.now().toString(36) +
-    Math.random().toString(36).slice(2, 10)
-  );
+  // 128-bit random IDs (security review 2026-10-18, MEDIUM #10): report pages
+  // are public by design, so IDs must not be enumerable.
+  return randomUUID();
 }

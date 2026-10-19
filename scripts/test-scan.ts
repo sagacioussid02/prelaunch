@@ -13,6 +13,11 @@ import { writeFileSync } from "node:fs";
 import { runScan } from "../lib/scanner.ts";
 import { renderReport } from "../lib/report.ts";
 
+// The fixture server binds 127.0.0.1, which the SSRF guard blocks by
+// default. Permit loopback for this self-test only (metadata/link-local/
+// private ranges stay blocked). Never set this in a deployed environment.
+process.env.PRELAUNCH_ALLOW_LOOPBACK = "1";
+
 // Fake key, assembled at runtime so the sk_live_ literal never appears in
 // source — otherwise GitHub secret scanning blocks the push. Not a real key.
 const FAKE_STRIPE_KEY = "sk_" + "live_" + "FIXTURE1234567890AB";
