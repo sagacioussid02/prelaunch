@@ -47,7 +47,8 @@ Zero dependencies — runs on stock Node 20+ (type-stripping; no build step).
 
 1. `npm install && npm run build`, deploy to a **private** `*.vercel.app`
    with Deployment Protection on — domain stays parameterized.
-2. Swap `lib/store.ts` for Postgres (Neon); add Upstash Ratelimit
-   (5 scans/hour/IP) in front of `/api/scan`.
+2. Swap `lib/store.ts` for Postgres (Neon); upgrade the in-memory
+   `/api/scan` rate limit (5 scans/hour/IP) + SSRF guard + concurrency cap
+   to Upstash Ratelimit (Redis-backed) for multi-instance production.
 3. Dogfood: `--full` scans of Sidd's own Vercel projects.
 4. Domain (`prelaunchcheck.dev` recommended) attached only after his go-ahead.
