@@ -94,6 +94,18 @@ const notFoundCheck: Check = {
       ctx,
       ctx.target + "/this-page-should-not-exist-" + Date.now().toString(36),
     );
+    if (res.status === 0) {
+      // Transport failure (timeout, reset, DNS) — not a server verdict.
+      return [
+        {
+          checkId: this.id,
+          severity: "info",
+          title: "Could not verify 404 handling (bogus-path probe failed)",
+          location: res.url,
+          fix: "Re-run the scan; the probe request did not complete.",
+        },
+      ];
+    }
     if (res.status !== 404) {
       return [
         {

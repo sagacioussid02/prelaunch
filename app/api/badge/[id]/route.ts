@@ -5,9 +5,10 @@ import { renderBadge } from "@/lib/report";
 /** GET /api/badge/{id}.svg — shields.io-style score badge for READMEs. */
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const id = params.id.replace(/\.svg$/, "");
+  const { id: rawId } = await params;
+  const id = rawId.replace(/\.svg$/, "");
   const result = await getScan(id);
   if (!result || result.status !== "done") {
     return new NextResponse("not found", { status: 404 });

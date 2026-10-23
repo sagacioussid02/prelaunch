@@ -81,6 +81,18 @@ import { assertSafeHostname, MAX_REDIRECT_HOPS } from "../ssrf.ts";
  * guard re-validates every hop: a redirect from a public host to an
  * internal/metadata address is rejected instead of followed.
  */
+/**
+ * True for undici's network-failure TypeError ("fetch failed"), the signature
+ * of a dead keep-alive socket / reset connection. Timeouts (AbortError) and
+ * SSRF-guard throws are NOT retried here.
+ */
+function isTransientNetworkError(err: unknown): boolean {
+  return (
+    err instanceof TypeError &&
+    /fetch failed/i.test((err as Error).message ?? "")
+  );
+}
+
 export async function fetchWithTimeout(
   url: string,
   timeoutMs: number,
@@ -94,18 +106,28 @@ export async function fetchWithTimeout(
     }
     await assertSafeHostname(parsed.hostname);
 
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    let res: Response;
-    try {
-      res = await fetch(current, {
-        ...init,
-        signal: ctrl.signal,
-        redirect: "manual",
-      });
-    } finally {
-      clearTimeout(timer);
+    let res: Response | undefined;
+    // Retry once on transient network failure: a request can race onto a
+    // keep-alive socket the server/proxy just closed ("other side closed").
+    // The retry opens a fresh connection. Safe — scanner only issues GETs.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        res = await fetch(current, {
+          ...init,
+          signal: ctrl.signal,
+          redirect: "manual",
+        });
+        break;
+      } catch (err) {
+        if (attempt === 0 && isTransientNetworkError(err)) continue;
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    if (!res) throw new Error("fetch retry exhausted without a result"); // unreachable
 
     const location = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && location) {

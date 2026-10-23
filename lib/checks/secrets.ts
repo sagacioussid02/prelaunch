@@ -56,9 +56,13 @@ const clientBundleSecrets: Check = {
     if (home.status === 0 || !home.body) return findings;
 
     const chunks = extractScriptSrcs(home.body, ctx.target).slice(0, 12); // cap: gentle
+    let skipped = 0;
     for (const chunk of chunks) {
       const js = await cachedGet(ctx, chunk);
-      if (js.status !== 200 || !js.body) continue;
+      if (js.status !== 200 || !js.body) {
+        skipped++;
+        continue;
+      }
       for (const { name, re, minEntropy } of SECRET_PATTERNS) {
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
@@ -76,6 +80,15 @@ const clientBundleSecrets: Check = {
           break; // one finding per pattern per chunk is enough
         }
       }
+    }
+    if (skipped > 0) {
+      findings.push({
+        checkId: this.id,
+        severity: "info",
+        title: `Could not fetch ${skipped} of ${chunks.length} JS chunks — bundle analysis may be incomplete`,
+        location: ctx.target,
+        fix: "Re-run the scan; unfetched chunks were not analyzed for secrets.",
+      });
     }
     return findings;
   },

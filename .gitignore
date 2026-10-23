@@ -12,6 +12,9 @@ out/
 # prototype JSON scan store — local results, never commit
 .data/
 
+# local scan reports / dogfood output — never commit
+hidden/
+
 # keys / certs
 *.pem
 

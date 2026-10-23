@@ -3,8 +3,9 @@ import { getScan } from "@/lib/store";
 import { renderReport } from "@/lib/report";
 
 /** Report page: /r/{id}. Public, no login required to view (per spec §5). */
-export default async function ReportPage({ params }: { params: { id: string } }) {
-  const result = await getScan(params.id);
+export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const result = await getScan(id);
   if (!result) notFound();
 
   if (result.status === "running") {
