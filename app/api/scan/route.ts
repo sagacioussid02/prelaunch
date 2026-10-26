@@ -1,8 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { runScan } from "@/lib/scanner";
-import { getScan, newScanId, saveScan } from "@/lib/store";
-import type { ScanMode, ScanResult } from "@/lib/checks/types";
+import { startScanJob } from "@/lib/jobs";
+import { newScanId } from "@/lib/store";
+import type { ScanMode } from "@/lib/checks/types";
 
 /**
  * POST /api/scan { url, mode? }
@@ -89,36 +89,17 @@ export async function POST(req: NextRequest) {
   }
 
   const id = newScanId();
-  const placeholder: ScanResult = {
-    id,
-    url: body.url,
-    mode,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    score: 0,
-    grade: "?",
-    findings: [],
-    checkTimings: {},
-  };
-  await saveScan(placeholder);
-
-  // Background the scan; the report page polls. Concurrency-counted so one
-  // caller can't exhaust CPU/network with parallel scans.
+  // Concurrency-counted so one caller can't exhaust CPU/network with parallel scans.
   inFlight++;
-  runScan(body.url, mode, id)
-    .then(saveScan)
-    .catch(async (err) => {
-      const failed = await getScan(id);
-      if (failed) {
-        failed.status = "failed";
-        failed.finishedAt = new Date().toISOString();
-        await saveScan(failed);
-      }
-      console.error("scan failed", id, err);
-    })
-    .finally(() => {
+  try {
+    const job = await startScanJob(body.url, mode, id);
+    void job.done.finally(() => {
       inFlight--;
     });
+  } catch (err) {
+    inFlight--;
+    throw err;
+  }
 
   return NextResponse.json({ id });
 }

@@ -5,6 +5,7 @@ import { authChecks } from "./auth.ts";
 import { headerChecksList } from "./headers.ts";
 import { seoChecks } from "./seo.ts";
 import { errorChecks } from "./errors.ts";
+import { simulationChecks } from "./simulations.ts";
 
 export const registry: Check[] = [
   ...secretChecks,
@@ -12,4 +13,5 @@ export const registry: Check[] = [
   ...headerChecksList,
   ...seoChecks,
   ...errorChecks,
+  ...simulationChecks,
 ];

@@ -23,6 +23,32 @@ export interface ScanContext {
   mode: ScanMode;
   /** Shared per-scan state (fetched pages, headers) to avoid duplicate GETs */
   cache: Map<string, CachedResponse>;
+  /** Scan id, used to name saved artifacts such as screenshots */
+  scanId: string;
+  /** Screenshots captured by browser simulations */
+  screenshots: Screenshot[];
+  /** Lazily-created shared headless-browser session (see lib/checks/browser.ts) */
+  session?: unknown;
+}
+
+export interface Screenshot {
+  /** URL-safe slug, e.g. "desktop" */
+  name: string;
+  label: string;
+  width: number;
+  height: number;
+}
+
+export interface CheckProgress {
+  id: string;
+  name: string;
+  category: string;
+  /** What this check looks for, in plain language */
+  description: string;
+  status: "pending" | "running" | "done";
+  findingCount?: number;
+  worst?: Severity;
+  ms?: number;
 }
 
 export interface CachedResponse {
@@ -55,6 +81,8 @@ export interface Check {
   categoryWeight: number;
   /** Whether the check may run in passive (anonymous) mode */
   modes: ScanMode[];
+  /** Override the runner's default per-check timeout (browser simulations are slower) */
+  timeoutMs?: number;
   run(ctx: ScanContext): Promise<Finding[]>;
 }
 
@@ -71,6 +99,11 @@ export interface ScanResult {
   findings: Finding[];
   /** Per-check timing for the report metadata */
   checkTimings: Record<string, number>;
+  /** Live per-check progress; final state doubles as the "what we checked" list */
+  progress?: CheckProgress[];
+  screenshots?: Screenshot[];
+  /** Set when status is "failed" */
+  error?: string;
 }
 
 import { assertSafeHostname, MAX_REDIRECT_HOPS } from "../ssrf.ts";

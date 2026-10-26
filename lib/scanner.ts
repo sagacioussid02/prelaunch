@@ -7,8 +7,10 @@
  * A report with zero blockers earns the "Ready to launch" banner.
  */
 
-import type { Check, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
+import type { Check, CheckProgress, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
 import { registry } from "./checks/index.ts";
+import { closeSession } from "./checks/browser.ts";
+import { metaFor } from "./checks/meta.ts";
 import { assertSafeHostname } from "./ssrf.ts";
 
 export const CHECK_TIMEOUT_MS = 15_000;
@@ -56,7 +58,7 @@ async function runOne(
       new Promise<Finding[]>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error(`check timeout: ${check.id}`)),
-          CHECK_TIMEOUT_MS,
+          check.timeoutMs ?? CHECK_TIMEOUT_MS,
         );
       }),
     ]).catch((err) => [
@@ -74,10 +76,23 @@ async function runOne(
   }
 }
 
+export function initialProgress(mode: ScanMode): CheckProgress[] {
+  return registry
+    .filter((c) => c.modes.includes(mode))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      description: metaFor(c.id).looksFor,
+      status: "pending" as const,
+    }));
+}
+
 export async function runScan(
   rawUrl: string,
   mode: ScanMode,
   id: string,
+  onProgress?: (progress: CheckProgress[]) => void,
 ): Promise<ScanResult> {
   const target = normalizeUrl(rawUrl);
   // Fail fast on SSRF targets (loopback/metadata/private). Every individual
@@ -85,10 +100,28 @@ export async function runScan(
   await assertSafeHostname(new URL(target).hostname);
   const startedAt = new Date().toISOString();
   const startedMs = Date.now();
-  const ctx: ScanContext = { target, mode, cache: new Map() };
+  const ctx: ScanContext = { target, mode, cache: new Map(), scanId: id, screenshots: [] };
 
   const eligible = registry.filter((c) => c.modes.includes(mode));
-  const results = await Promise.all(eligible.map((c) => runOne(c, ctx)));
+  const progress = initialProgress(mode);
+  onProgress?.(progress);
+  const results = await Promise.all(
+    eligible.map(async (c, i) => {
+      progress[i].status = "running";
+      onProgress?.(progress);
+      const r = await runOne(c, ctx);
+      const rank = { blocker: 0, warning: 1, info: 2 } as const;
+      progress[i] = {
+        ...progress[i],
+        status: "done",
+        ms: r.ms,
+        findingCount: r.findings.length,
+        worst: r.findings.sort((a, b) => rank[a.severity] - rank[b.severity])[0]?.severity,
+      };
+      onProgress?.(progress);
+      return r;
+    }),
+  ).finally(() => closeSession(ctx));
 
   const findings = results.flatMap((r) => r.findings);
   const checkTimings: Record<string, number> = {};
@@ -115,5 +148,9 @@ export async function runScan(
     grade: gradeLetter,
     findings,
     checkTimings,
+    progress,
+    screenshots: ctx.screenshots.sort(
+      (a, b) => ["desktop", "tablet", "mobile"].indexOf(a.name) - ["desktop", "tablet", "mobile"].indexOf(b.name),
+    ),
   };
 }

@@ -14,6 +14,11 @@ lib/checks/auth.ts     supabase-anon-exposed, unprotected-api, preview-protectio
 lib/checks/headers.ts  security headers + HTTPS enforcement (passive-safe)
 lib/checks/seo.ts      title/meta/OG/robots/sitemap/favicon/404 (passive-safe)
 lib/checks/errors.ts   error-verboseness probes (passive-safe)
+lib/checks/simulations.ts  live Chromium simulations: load, mobile/tablet, a11y, perf, links, generated journeys
+lib/checks/browser.ts  shared Playwright session (SSRF-guarded, read-only journeys)
+lib/checks/meta.ts     plain-language "what it looks for / why it matters" copy
+lib/monitor.ts         deploy monitoring: baseline diff, new-blocker alerts
+lib/jobs.ts            background scan job with live per-check progress
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
@@ -32,6 +37,23 @@ hidden/                test outputs (sample report)
   Supabase key review, API probing. Prototype gates it behind
   `x-prelaunch-owner-token` == `PRELAUNCH_OWNER_TOKEN`; v2 replaces this
   with the Vercel deploy-hook ownership flow.
+
+## Live simulations
+
+Needs Chromium: `npx playwright install chromium` (falls back to an installed
+Google Chrome; skipped with an info finding if neither exists). Pages are
+rendered at desktop/tablet/phone sizes, journeys are generated from the page's
+real links and forms. Forms are filled but never submitted, non-GET requests
+are blocked, and button clicking only runs in `full` mode.
+
+## Deploy monitoring
+
+On a report page, "Enable monitoring" returns a deploy-hook URL
+(`/api/monitor/{id}/deploy?token=…`, shown once) plus a dashboard at `/m/{id}`.
+Point a Vercel "Deployment Ready" webhook or a CI step at the hook. The first
+audit is the baseline; later audits record and alert (optional Slack/Discord
+webhook) only on blockers that were not in the previous run. Alerts are
+rate-limited to one audit per monitor per minute.
 
 ## Run the tests
 

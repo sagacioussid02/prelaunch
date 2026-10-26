@@ -20,13 +20,38 @@ async function pathFor(id: string): Promise<string> {
 }
 
 export async function saveScan(result: ScanResult): Promise<void> {
-  await fs.writeFile(await pathFor(result.id), JSON.stringify(result));
+  const file = await pathFor(result.id);
+  // Write-then-rename so pollers never read a half-written file.
+  const tmp = `${file}.${randomUUID()}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(result));
+  await fs.rename(tmp, file);
 }
 
 export async function getScan(id: string): Promise<ScanResult | null> {
   try {
     const raw = await fs.readFile(await pathFor(id), "utf8");
     return JSON.parse(raw) as ScanResult;
+  } catch {
+    return null;
+  }
+}
+
+export const DATA_ROOT = DATA_DIR;
+
+async function shotPath(id: string, name: string): Promise<string> {
+  if (!/^[a-z0-9-]+$/i.test(id) || !/^[a-z]+$/.test(name)) throw new Error("bad shot id");
+  const dir = join(DATA_DIR, "shots");
+  await fs.mkdir(dir, { recursive: true });
+  return join(dir, `${id}-${name}.jpg`);
+}
+
+export async function saveShot(id: string, name: string, data: Buffer): Promise<void> {
+  await fs.writeFile(await shotPath(id, name), data);
+}
+
+export async function getShot(id: string, name: string): Promise<Buffer | null> {
+  try {
+    return await fs.readFile(await shotPath(id, name));
   } catch {
     return null;
   }
