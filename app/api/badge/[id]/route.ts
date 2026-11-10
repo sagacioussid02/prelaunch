@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getScan } from "@/lib/store";
+import { getScanChecked as getScan } from "@/lib/scanstatus";
 import { renderBadge } from "@/lib/report";
 
 /** GET /api/badge/{id}.svg — shields.io-style score badge for READMEs. */

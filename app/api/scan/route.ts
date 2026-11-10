@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { startScanJob } from "@/lib/jobs";
+import { keepAlive } from "@/lib/background";
 import { newScanId } from "@/lib/store";
 import {
   checkLimit,
@@ -13,9 +14,12 @@ import type { ScanMode } from "@/lib/checks/types";
 /**
  * POST /api/scan { url, mode? }
  *
- * MVP prototype behavior:
- * - Returns the report id immediately; the scan runs in the background
- *   (fire-and-forget within the function lifetime — prototype simplification).
+ * Behavior:
+ * - Returns the report id immediately; the scan runs in the background and
+ *   is kept alive past the response with Next's after() (lib/background.ts,
+ *   issue #4). A scan that overruns its deadline, or whose function is
+ *   frozen anyway, ends as "failed" with a readable reason (lib/jobs.ts,
+ *   lib/scanstatus.ts).
  * - mode defaults to "passive" (anonymous, read-only). "full" requires the
  *   ownership-proof flow (deploy-hook integration, v2) — accepted here only
  *   with an owner token header in prototype.
@@ -84,9 +88,11 @@ export async function POST(req: NextRequest) {
   inFlight++;
   try {
     const job = await startScanJob(body.url, mode, id);
-    void job.done.finally(() => {
-      inFlight--;
-    });
+    keepAlive(
+      job.done.finally(() => {
+        inFlight--;
+      }),
+    );
   } catch (err) {
     inFlight--;
     throw err;
@@ -94,3 +100,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ id });
 }
+
+/** Covers the scan run in after() (SCAN_DEADLINE_MS is 4 minutes). */
+export const maxDuration = 300;
