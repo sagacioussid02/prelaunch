@@ -1,17 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMonitor } from "@/lib/monitor";
+import {
+  checkLimit,
+  clientIp,
+  MONITORS_PER_HOUR_PER_IP,
+  RATE_WINDOW_SECONDS,
+} from "@/lib/ratelimit";
 
-const MAX_PER_HOUR = 10;
-const hits = new Map<string, number[]>();
-
-/** POST /api/monitor { url, alertWebhook? } → { id, token, deployHook } (token is shown once). */
+/**
+ * POST /api/monitor { url, alertWebhook? } → { id, token, deployHook } (token is shown once).
+ *
+ * Abuse control (issue #6): per-IP creation limit of 10/hour via
+ * lib/ratelimit.ts — Upstash Redis counters shared across instances when
+ * configured, in-memory sliding window fallback otherwise, fail-closed if
+ * Redis errors.
+ */
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => t > now - 3_600_000);
-  if (recent.length >= MAX_PER_HOUR) return new NextResponse("rate limit exceeded", { status: 429 });
-  recent.push(now);
-  hits.set(ip, recent);
+  const ip = clientIp(req.headers);
+  const limit = await checkLimit(
+    `monitor:${ip}`,
+    MONITORS_PER_HOUR_PER_IP,
+    RATE_WINDOW_SECONDS,
+  );
+  if (!limit.allowed) {
+    return new NextResponse("rate limit exceeded", {
+      status: 429,
+      headers: { "Retry-After": String(limit.retryAfterSeconds ?? 3600) },
+    });
+  }
 
   const body = (await req.json().catch(() => null)) as { url?: string; alertWebhook?: string } | null;
   if (!body?.url) return new NextResponse("missing url", { status: 400 });
