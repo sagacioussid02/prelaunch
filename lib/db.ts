@@ -1,12 +1,14 @@
 /**
  * Production persistence for scans, monitors, the waitlist, monitor
- * notifications (issue #3, Phase 0 steps 1, 3 and 4) and the scan request
- * log (issue #6, Phase 1; lib/scanlog.ts).
+ * notifications and billing subscriptions (issue #3, Phase 0 steps
+ * 1, 3, 4 and 6) and the scan request log (issue #6, Phase 1;
+ * lib/scanlog.ts).
  *
  * Ported from the local prototype's lib/db.ts. When DATABASE_URL is set
  * (Neon Postgres at deploy), Postgres is the authoritative store for scans
  * and monitors, behind the existing lib/store.ts / lib/monitor.ts
- * interfaces, and for waitlist signups behind lib/waitlist.ts. When it is
+ * interfaces, for waitlist signups behind lib/waitlist.ts, and for
+ * Stripe subscriptions behind lib/billing.ts. When it is
  * unset, callers fall back to the JSON-file store — local dev and
  * scripts/test-scan.ts need no infra.
  *
@@ -74,6 +76,15 @@ async function ensureSchema(): Promise<void> {
           id TEXT PRIMARY KEY,
           data JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS subscriptions (
+          email TEXT PRIMARY KEY,
+          stripe_customer_id TEXT NOT NULL,
+          stripe_subscription_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          current_period_end TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE TABLE IF NOT EXISTS scan_requests (
           id BIGSERIAL PRIMARY KEY,
