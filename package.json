@@ -18,6 +18,9 @@
  "engines": {
   "node": ">=20"
  },
+ "overrides": {
+  "postcss": "^8.5.10"
+ },
  "name": "prelaunch-check",
  "private": true,
  "scripts": {
