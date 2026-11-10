@@ -59,6 +59,20 @@ import {
 } from "./plans.ts";
 
 export const MONITOR_COOLDOWN_MS = 60_000;
+/**
+ * A monitor still flagged `running` this long after its run started is
+ * treated as not running (issue #4): its function was frozen or killed
+ * before the completion path could clear the flag. Matches the scan-level
+ * STALE_SCAN_MS in lib/scanstatus.ts.
+ */
+export const MONITOR_STALE_RUN_MS = 5 * 60_000;
+
+/** Pure, unit-tested: true when `running` is set but the run is past the stale window. */
+export function isRunStale(m: { running: boolean; lastRunAt?: string }, nowMs: number): boolean {
+  if (!m.running) return false;
+  const last = m.lastRunAt ? Date.parse(m.lastRunAt) : NaN;
+  return !Number.isFinite(last) || nowMs - last >= MONITOR_STALE_RUN_MS;
+}
 const MAX_RUNS = 50;
 
 export interface MonitorRun {
@@ -245,7 +259,8 @@ function toPublic(m: StoredMonitor): PublicMonitor {
     id: n.id,
     url: n.url,
     createdAt: n.createdAt,
-    running: n.running,
+    // A frozen run must not show "An audit is running…" forever (issue #4).
+    running: n.running && !isRunStale(n, Date.now()),
     hasAlertWebhook: !!n.alertWebhook,
     hasNotifyEmail: !!n.email,
     domainVerified: !!n.domainVerified,
@@ -374,17 +389,25 @@ async function sendAlert(m: StoredMonitor, run: MonitorRun, reportUrl: string): 
   }
 }
 
-export type RunStart = { ok: true; scanId: string } | { ok: false; reason: "cooldown" | "busy" | "missing" | "error"; retryInMs?: number };
+export type RunStart =
+  /**
+   * `done` settles once the run is recorded and `running` is cleared; routes
+   * pass it to keepAlive() (lib/background.ts) so it survives the response.
+   * It never rejects.
+   */
+  | { ok: true; scanId: string; done: Promise<void> }
+  | { ok: false; reason: "cooldown" | "busy" | "missing" | "error"; retryInMs?: number };
 
 /** Starts an audit in the background; the result is diffed and recorded when it finishes. */
 export async function runMonitor(id: string, trigger: "deploy" | "manual" | "scheduled", baseUrl: string): Promise<RunStart> {
   const m = await load(id);
   if (!m) return { ok: false, reason: "missing" };
   const since = m.lastRunAt ? Date.now() - new Date(m.lastRunAt).getTime() : Infinity;
-  if (since < MONITOR_COOLDOWN_MS && !(m.running && since > 5 * 60_000)) {
+  const stale = isRunStale(m, Date.now());
+  if (since < MONITOR_COOLDOWN_MS && !stale) {
     return { ok: false, reason: "cooldown", retryInMs: MONITOR_COOLDOWN_MS - since };
   }
-  if (m.running && since < 5 * 60_000) return { ok: false, reason: "busy" };
+  if (m.running && !stale) return { ok: false, reason: "busy" };
 
   const scanId = newScanId();
   m.running = true;
@@ -404,7 +427,7 @@ export async function runMonitor(id: string, trigger: "deploy" | "manual" | "sch
     console.error("monitor scan failed to start", id, err);
     return { ok: false, reason: "error" };
   }
-  void job.done.then(async (result) => {
+  const recorded = job.done.then(async (result) => {
     const fresh = (await load(id)) ?? m;
     fresh.running = false;
     if (result) {
@@ -495,7 +518,22 @@ export async function runMonitor(id: string, trigger: "deploy" | "manual" | "sch
     }
     await save(fresh);
   });
-  return { ok: true, scanId };
+  // Issue #4: monitor runs always clear `running`, even when recording the
+  // run throws (a store error, a failed diff read). Without this the flag
+  // stays set and every trigger is told "busy" until the stale window.
+  const done = recorded.catch(async (err) => {
+    console.error("monitor run could not be recorded", id, err);
+    try {
+      const fresh = await load(id);
+      if (fresh?.running) {
+        fresh.running = false;
+        await save(fresh);
+      }
+    } catch (clearErr) {
+      console.error("monitor running flag could not be cleared", id, clearErr);
+    }
+  });
+  return { ok: true, scanId, done };
 }
 
 /* ---------------- domain verification (step 4, PR-B) ---------------- */
