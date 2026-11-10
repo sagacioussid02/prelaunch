@@ -33,6 +33,12 @@ import { fetchWithTimeout } from "./checks/types.ts";
 import type { Finding } from "./checks/types.ts";
 import { normalizeEmail } from "./waitlist.ts";
 import {
+  VERIFICATION_PATH,
+  VERIFICATION_TIMEOUT_MS,
+  generateSecret,
+  verificationBodyMatches,
+} from "./ownership.ts";
+import {
   computeRegression,
   decideEmailNotification,
   notifyRegression,
@@ -436,3 +442,65 @@ export async function runMonitor(id: string, trigger: "deploy" | "manual" | "sch
   return { ok: true, scanId };
 }
 
+/* ---------------- domain verification (step 4, PR-B) ---------------- */
+
+/**
+ * Issue (or re-issue) a domain-verification claim token for a monitor.
+ * Re-issuing invalidates the previous token — the newest token is the
+ * only one verify accepts — so a leaked token is revoked by re-claiming.
+ * Throws "monitor not found" for an unknown id (routes map it to 404).
+ */
+export async function requestVerificationClaim(
+  id: string,
+): Promise<{ token: string; path: string; url: string }> {
+  const m = await load(id);
+  if (!m) throw new Error("monitor not found");
+  m.verificationToken = generateSecret(16);
+  await save(m);
+  return {
+    token: m.verificationToken,
+    path: VERIFICATION_PATH,
+    url: `${m.url}${VERIFICATION_PATH}`,
+  };
+}
+
+/**
+ * Verify domain ownership: fetch the well-known file from the monitored
+ * site (SSRF-guarded, the same fetcher the scanner uses) and compare
+ * its body to the current claim token. On match the monitor is marked
+ * verified, which is what entitles it to scheduled runs. On any fetch
+ * failure or mismatch it stays unverified and the caller gets a reason,
+ * not a crash — a site that blocks bots must not 500.
+ */
+export async function verifyDomainOwnership(
+  id: string,
+): Promise<{ verified: boolean; reason: string }> {
+  const m = await load(id);
+  if (!m) throw new Error("monitor not found");
+  if (!m.verificationToken) {
+    return { verified: false, reason: "no verification token — claim one first" };
+  }
+  let body = "";
+  let status = 0;
+  try {
+    const res = await fetchWithTimeout(`${m.url}${VERIFICATION_PATH}`, VERIFICATION_TIMEOUT_MS, {
+      headers: { "User-Agent": "PreLaunchCheck/0.1 (ownership verification)" },
+    });
+    status = res.status;
+    body = await res.text().catch(() => "");
+  } catch (err) {
+    return {
+      verified: false,
+      reason: `verification fetch failed: ${String((err as Error).message ?? err)}`,
+    };
+  }
+  if (status !== 200) {
+    return { verified: false, reason: `verification file returned ${status}` };
+  }
+  if (!verificationBodyMatches(body, m.verificationToken)) {
+    return { verified: false, reason: "verification file content does not match the claim token" };
+  }
+  m.domainVerified = true;
+  await save(m);
+  return { verified: true, reason: "verified" };
+}
