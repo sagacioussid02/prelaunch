@@ -19,6 +19,13 @@
  * created before the port keep working unchanged. The deploy token
  * stays as before: a SHA-256 hash at rest, compared timing-safely —
  * the per-monitor deploy secret for this codebase.
+ *
+ * Plan limits (Phase 0 step 5, lib/plans.ts): the owner's plan is
+ * recorded at creation and, when a plan is passed in, the cadence is
+ * floored at the plan minimum here. Enforcement (per-owner count,
+ * duplicate guard, full-mode gate) lives in the creation route, not
+ * in this module — internal callers (runner, tests) keep the plain
+ * 60–10080 clamp they have always had.
  */
 
 import { promises as fs } from "node:fs";
@@ -45,6 +52,11 @@ import {
   regressionHashFor,
   type RunRegression,
 } from "./notify.ts";
+import {
+  clampIntervalForPlan,
+  type Plan,
+  type PlanId,
+} from "./plans.ts";
 
 export const MONITOR_COOLDOWN_MS = 60_000;
 const MAX_RUNS = 50;
@@ -94,6 +106,9 @@ interface StoredMonitor {
   /** Dedupe state for regression email (lib/notify.ts). */
   lastNotifiedHash?: string | null;
   lastNotifiedAt?: string | null;
+  /* ---- plan field (step 5): optional so pre-port rows stay valid ---- */
+  /** Owner's plan at creation time (lib/plans.ts); backfilled to "free". */
+  plan?: PlanId;
 }
 
 /** What the public dashboard may see (no secret hash, no webhook URL, no claim token, no raw email). */
@@ -106,6 +121,7 @@ export interface PublicMonitor {
   hasNotifyEmail: boolean;
   domainVerified: boolean;
   enabled: boolean;
+  plan: PlanId;
   baselineScanId: string | null;
   nextRunAt: string | null;
   lastNotifiedAt: string | null;
@@ -140,6 +156,7 @@ export function normalizeStoredMonitor(m: StoredMonitor): StoredMonitor {
     nextRunAt: m.nextRunAt ?? null,
     lastNotifiedHash: m.lastNotifiedHash ?? null,
     lastNotifiedAt: m.lastNotifiedAt ?? null,
+    plan: m.plan === "pro" ? "pro" : "free",
   };
 }
 
@@ -233,6 +250,7 @@ function toPublic(m: StoredMonitor): PublicMonitor {
     hasNotifyEmail: !!n.email,
     domainVerified: !!n.domainVerified,
     enabled: n.enabled !== false,
+    plan: n.plan === "pro" ? "pro" : "free",
     baselineScanId: n.baselineScanId ?? null,
     nextRunAt: n.nextRunAt ?? null,
     lastNotifiedAt: n.lastNotifiedAt ?? null,
@@ -263,7 +281,13 @@ async function assertWebhook(raw: string): Promise<string> {
 export async function createMonitor(
   rawUrl: string,
   alertWebhook?: string,
-  opts: { email?: string | null; intervalMinutes?: unknown; regressionOnly?: boolean } = {},
+  opts: {
+    email?: string | null;
+    intervalMinutes?: unknown;
+    regressionOnly?: boolean;
+    /** Owner's plan (step 5): recorded on the monitor; the cadence is floored at the plan minimum. */
+    plan?: Plan;
+  } = {},
 ): Promise<{ id: string; token: string; url: string }> {
   const url = normalizeUrl(rawUrl);
   await assertSafeHostname(new URL(url).hostname);
@@ -290,12 +314,44 @@ export async function createMonitor(
     verificationToken: null,
     baselineScanId: null,
     baselineScore: null,
-    intervalMinutes: clampIntervalMinutes(opts.intervalMinutes ?? 1440),
+    // With a plan (the creation route), the cadence is floored at the
+    // plan minimum — a Free monitor asking for hourly checks gets
+    // daily. Without one (internal callers), the plain clamp applies.
+    intervalMinutes: opts.plan
+      ? clampIntervalForPlan(opts.plan, opts.intervalMinutes)
+      : clampIntervalMinutes(opts.intervalMinutes ?? 1440),
     nextRunAt: null,
     lastNotifiedHash: null,
     lastNotifiedAt: null,
+    plan: opts.plan?.id ?? "free",
   });
   return { id, token, url };
+}
+
+/* ---------------- plan-limit counting (step 5) ---------------- */
+
+/**
+ * The owner's monitors that count against their plan (lib/plans.ts).
+ * "Active" here is the repo analogue of the prototype's `active`
+ * flag: a monitor with enabled === false does not count — it consumes
+ * no plan slot and does not trigger the duplicate guard — mirroring
+ * the prototype, where inactive monitors are excluded from both.
+ * Email comparison uses the normalized form stored at creation.
+ */
+export async function listActiveMonitorsByEmail(email: string): Promise<StoredMonitor[]> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return [];
+  const all = await listStoredMonitors();
+  return all.filter((m) => m.enabled !== false && m.email === normalized);
+}
+
+/** The owner's active monitor for an exact (already normalized) URL, if any — the duplicate guard. */
+export async function findActiveMonitorByEmailUrl(
+  email: string,
+  normalizedUrl: string,
+): Promise<StoredMonitor | null> {
+  const mine = await listActiveMonitorsByEmail(email);
+  return mine.find((m) => m.url === normalizedUrl) ?? null;
 }
 
 const key = (f: Pick<Finding, "checkId" | "title">) => `${f.checkId}|${f.title}`;

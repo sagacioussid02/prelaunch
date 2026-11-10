@@ -67,6 +67,15 @@ is verified (claim/verify endpoints), the hourly Vercel Cron hits
 re-audits on the monitor's cadence (`intervalMinutes`, default daily).
 Unverified or disabled monitors are never run on a schedule.
 
+**Plan limits:** when a monitor is created with an `email`, the owner is
+on the Free plan (1 active monitor, passive scans, daily cadence minimum)
+unless the address is listed in `PRO_EMAILS` — Pro allows 10 monitors,
+full-mode scans, and hourly cadence. Duplicates return 409; plan-cap and
+full-mode-on-Free rejections return 402 with an upgrade hint, and a
+cadence below the plan minimum is raised to it (noted in the response).
+Limits gate creation only; runs, webhooks, and verification are never
+plan-gated.
+
 ## Run the tests
 
 ```bash
@@ -75,6 +84,7 @@ node scripts/test-notifications.ts  # regression email: decision matrix, dedupe,
 node scripts/test-monitor-runner.ts # scheduled runner: due-selection + live fixture run
 node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify + tamper cases
 node scripts/test-deploy-hooks.ts   # deploy token accept/reject + cron-secret fail-closed
+node scripts/test-plans.ts       # plan limits: gate, counting, route 402/409/201
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 
