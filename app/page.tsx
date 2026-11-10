@@ -1,5 +1,6 @@
 import { initialProgress } from "@/lib/scanner";
 import ScanForm from "./components/ScanForm";
+import WaitlistForm from "./components/WaitlistForm";
 
 export default function Home() {
   const checks = initialProgress("passive");
@@ -27,6 +28,8 @@ export default function Home() {
           </div>
         ))}
       </div>
+
+      <WaitlistForm />
     </main>
   );
 }

@@ -1,11 +1,13 @@
 /**
- * Production persistence for scans and monitors (issue #3, Phase 0 step 1).
+ * Production persistence for scans, monitors and the waitlist (issue #3,
+ * Phase 0 steps 1 and 3).
  *
  * Ported from the local prototype's lib/db.ts. When DATABASE_URL is set
  * (Neon Postgres at deploy), Postgres is the authoritative store for scans
  * and monitors, behind the existing lib/store.ts / lib/monitor.ts
- * interfaces. When it is unset, callers fall back to the JSON-file store —
- * local dev and scripts/test-scan.ts need no infra.
+ * interfaces, and for waitlist signups behind lib/waitlist.ts. When it is
+ * unset, callers fall back to the JSON-file store — local dev and
+ * scripts/test-scan.ts need no infra.
  *
  * Deliberate choice: when DATABASE_URL IS set, a connection failure
  * propagates as an error instead of silently falling back to files,
@@ -60,6 +62,12 @@ async function ensureSchema(): Promise<void> {
           data JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS waitlist (
+          email TEXT PRIMARY KEY,
+          source TEXT NOT NULL CHECK (source IN ('landing', 'report')),
+          url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
       `);
     })();
