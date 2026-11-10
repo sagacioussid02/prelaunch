@@ -56,10 +56,23 @@ audit is the baseline; later audits record and alert (optional Slack/Discord
 webhook) only on blockers that were not in the previous run. Alerts are
 rate-limited to one audit per monitor per minute.
 
+Monitoring v2 adds two channels on top. **Email:** create a monitor with an
+`email` and regressions — new blockers, or a score drop of 10+ points vs the
+previous run — are emailed via Resend (`RESEND_API_KEY` + `NOTIFY_FROM`;
+without them the alert is recorded as "queued" and nothing is sent). Each
+incident emails once: the regression set is hashed, repeats are deduped, and
+a healthy run re-arms the alert. **Scheduled runs:** once a monitor's domain
+is verified (claim/verify endpoints), the hourly Vercel Cron hits
+`/api/cron/run-monitors` (Bearer `CRON_SECRET`, fails closed when unset) and
+re-audits on the monitor's cadence (`intervalMinutes`, default daily).
+Unverified or disabled monitors are never run on a schedule.
+
 ## Run the tests
 
 ```bash
 node scripts/test-scan.ts        # fixture scan (expects F/0) + passive example.com scan
+node scripts/test-notifications.ts  # regression email: decision matrix, dedupe, delivery records
+node scripts/test-monitor-runner.ts # scheduled runner: due-selection + live fixture run
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 

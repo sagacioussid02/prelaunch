@@ -8,7 +8,13 @@ import {
 } from "@/lib/ratelimit";
 
 /**
- * POST /api/monitor { url, alertWebhook? } → { id, token, deployHook } (token is shown once).
+ * POST /api/monitor { url, alertWebhook?, email?, intervalMinutes?, regressionOnly? }
+ *   → { id, token, deployHook } (token is shown once).
+ *
+ * `email` opts the monitor into regression email (lib/notify.ts);
+ * `intervalMinutes` sets the scheduled-runner cadence (clamped to
+ * 60–10080, default daily). Domain verification (claim/verify) is what
+ * enables scheduled runs — creation alone never does.
  *
  * Abuse control (issue #6): per-IP creation limit of 10/hour via
  * lib/ratelimit.ts — Upstash Redis counters shared across instances when
@@ -29,10 +35,20 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json().catch(() => null)) as { url?: string; alertWebhook?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    url?: string;
+    alertWebhook?: string;
+    email?: string;
+    intervalMinutes?: number;
+    regressionOnly?: boolean;
+  } | null;
   if (!body?.url) return new NextResponse("missing url", { status: 400 });
   try {
-    const m = await createMonitor(body.url, body.alertWebhook);
+    const m = await createMonitor(body.url, body.alertWebhook, {
+      email: body.email,
+      intervalMinutes: body.intervalMinutes,
+      regressionOnly: body.regressionOnly,
+    });
     const origin = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
     return NextResponse.json({
       id: m.id,

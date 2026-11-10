@@ -1,6 +1,6 @@
 /**
- * Production persistence for scans, monitors and the waitlist (issue #3,
- * Phase 0 steps 1 and 3).
+ * Production persistence for scans, monitors, the waitlist and monitor
+ * notifications (issue #3, Phase 0 steps 1, 3 and 4).
  *
  * Ported from the local prototype's lib/db.ts. When DATABASE_URL is set
  * (Neon Postgres at deploy), Postgres is the authoritative store for scans
@@ -67,6 +67,11 @@ async function ensureSchema(): Promise<void> {
           email TEXT PRIMARY KEY,
           source TEXT NOT NULL CHECK (source IN ('landing', 'report')),
           url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         );
       `);
