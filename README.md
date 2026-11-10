@@ -109,6 +109,7 @@ changes for Free users.
 ```bash
 node scripts/test-scan.ts        # fixture scan (expects F/0) + passive example.com scan
 node scripts/test-ssrf.ts        # SSRF guard: blocked ranges, IPv4-mapped IPv6, redirect-to-private hop
+node scripts/test-browser.ts     # browser (#5): serverless launch, partial-grade banner, in-browser SSRF block
 node scripts/test-notifications.ts  # regression email: decision matrix, dedupe, delivery records
 node scripts/test-monitor-runner.ts # scheduled runner: due-selection + live fixture run
 node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify + tamper cases

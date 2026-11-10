@@ -9,7 +9,7 @@
 
 import type { Check, CheckProgress, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
 import { registry } from "./checks/index.ts";
-import { closeSession } from "./checks/browser.ts";
+import { closeSession, getBrowserAvailability } from "./checks/browser.ts";
 import { metaFor } from "./checks/meta.ts";
 import { assertSafeHostname } from "./ssrf.ts";
 
@@ -133,6 +133,16 @@ export async function runScan(
   const rank = { blocker: 0, warning: 1, info: 2 } as const;
   findings.sort((a, b) => rank[a.severity] - rank[b.severity] || a.checkId.localeCompare(b.checkId));
 
+  // Issue #5: when the browser could not start, the letter grade stands
+  // but the result is flagged partial — the report renders a visible
+  // "browser checks unavailable" banner instead of presenting a grade
+  // that silently excludes every live simulation.
+  let partial: string | undefined;
+  if (eligible.some((c) => c.id.startsWith("sim-"))) {
+    const avail = await getBrowserAvailability(ctx).catch(() => null);
+    if (avail && avail.state === "unavailable") partial = avail.reason;
+  }
+
   const { score, grade: gradeLetter } = grade(findings);
   const finishedMs = Date.now();
 
@@ -146,6 +156,7 @@ export async function runScan(
     durationMs: finishedMs - startedMs,
     score,
     grade: gradeLetter,
+    ...(partial ? { partial } : {}),
     findings,
     checkTimings,
     progress,

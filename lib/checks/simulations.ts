@@ -13,7 +13,7 @@
 
 import type { Check, Finding, ScanContext, Severity } from "./types.ts";
 import { cachedGet } from "./types.ts";
-import { getSession } from "./browser.ts";
+import { getBrowserAvailability, getSession } from "./browser.ts";
 import type { FormInfo, PageSnapshot } from "./browser.ts";
 
 const CATEGORY = "Live browser simulation";
@@ -33,15 +33,29 @@ function short(u: string): string {
   }
 }
 
-const NO_BROWSER = (id: string) =>
+/**
+ * Issue #5: an unavailable browser is a WARNING, not a silent info skip —
+ * the landing page promises a real browser, so its absence must be
+ * impossible to miss. The scan result is also flagged partial and the
+ * report shows a banner (lib/scanner.ts, lib/report.ts).
+ */
+const NO_BROWSER = (id: string, reason: string) =>
   f(
     id,
-    "info",
-    "Live browser simulations skipped: no Chromium available on the scanner",
+    "warning",
+    "Browser checks unavailable — live simulations were skipped",
     "scanner runtime",
-    "Run `npx playwright install chromium` on the machine running the scanner.",
+    `No Chromium could be started in this environment (${reason}), so the real-browser checks ` +
+      "(page load, mobile layout, accessibility, performance, user journeys) did not run and this " +
+      "grade is partial. Production runs use a bundled serverless Chromium; locally, run " +
+      "`npx playwright install chromium` or set PRELAUNCH_CHROMIUM_PATH.",
     "https://playwright.dev/docs/browsers",
   );
+
+async function noBrowserFinding(ctx: ScanContext, id: string): Promise<Finding[]> {
+  const avail = await getBrowserAvailability(ctx);
+  return [NO_BROWSER(id, avail.state === "unavailable" ? avail.reason : "browser session unavailable")];
+}
 
 const simLoad: Check = {
   id: "sim-load",
@@ -52,7 +66,7 @@ const simLoad: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return [NO_BROWSER("sim-load")];
+    if (!session) return noBrowserFinding(ctx, "sim-load");
     const s = await session.snapshot("desktop");
     const out: Finding[] = [];
     if (s.navError) {
