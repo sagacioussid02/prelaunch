@@ -5,7 +5,8 @@
  * Ported from the prototype stack (launch prep part 2, 2026-10-29), where
  * it backed /api/scan (5/hr/IP) and /api/waitlist (10/hr/IP). Here it backs
  * POST /api/scan and POST /api/monitor (creation) since step 2, and
- * POST /api/waitlist since step 3.
+ * POST /api/waitlist since step 3. Phase 1 adds the per-target-host and
+ * global scan limits (checkScanTargetLimits).
  *
  * Production (UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN set):
  * fixed-window counters in Upstash Redis via its HTTP REST API — no SDK
@@ -35,6 +36,47 @@ export const MONITORS_PER_HOUR_PER_IP = 10;
 /** Used by /api/waitlist (step 3); defined here so the route only wires it. */
 export const WAITLIST_SIGNUPS_PER_HOUR_PER_IP = 10;
 export const RATE_WINDOW_SECONDS = 3600;
+
+/**
+ * Scan limits beyond per-IP (Phase 1, issue #6): a target host may be
+ * scanned at most SCANS_PER_HOUR_PER_HOST times per hour across ALL
+ * callers, so many IPs can't be pointed at one third-party site; and a
+ * global hourly cap bounds total outbound scanning. The global cap can be
+ * tuned with PRELAUNCH_GLOBAL_SCANS_PER_HOUR (read per call).
+ */
+export const SCANS_PER_HOUR_PER_HOST = 10;
+export const DEFAULT_GLOBAL_SCANS_PER_HOUR = 200;
+
+export function globalScansPerHour(): number {
+  const n = Number(process.env.PRELAUNCH_GLOBAL_SCANS_PER_HOUR);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_GLOBAL_SCANS_PER_HOUR;
+}
+
+/** Rate-limit key for a target host: lowercased, leading "www." dropped. */
+export function scanHostKey(hostname: string): string {
+  return hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+}
+
+export type ScanLimitScope = "host" | "global";
+
+/**
+ * Per-host, then global scan limits for an accepted, parsed request. The
+ * per-IP limit is checked separately, before the body is read. Order
+ * matters: a host-limited request does not consume global quota.
+ */
+export async function checkScanTargetLimits(
+  hostname: string,
+): Promise<LimitResult & { scope?: ScanLimitScope }> {
+  const host = await checkLimit(
+    `scanhost:${scanHostKey(hostname)}`,
+    SCANS_PER_HOUR_PER_HOST,
+    RATE_WINDOW_SECONDS,
+  );
+  if (!host.allowed) return { ...host, scope: "host" };
+  const global = await checkLimit("scanglobal", globalScansPerHour(), RATE_WINDOW_SECONDS);
+  if (!global.allowed) return { ...global, scope: "global" };
+  return { allowed: true };
+}
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;

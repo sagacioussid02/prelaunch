@@ -7,10 +7,13 @@
  *   baseline points at is protected, whatever its age. Monitor records
  *   themselves are never touched here. With DATABASE_URL set they live in
  *   Postgres, so baselines and history survive redeploys.
+ * - Scan request log rows (lib/scanlog.ts, issue #6) older than the same
+ *   window are deleted too.
  */
 
 import { deleteExpiredScans } from "./store.ts";
 import { listStoredMonitors } from "./monitor.ts";
+import { deleteExpiredScanRequests } from "./scanlog.ts";
 
 export const SCAN_RETENTION_DAYS = 30;
 
@@ -20,6 +23,8 @@ export interface RetentionSummary {
   /** Scans kept because a monitor's history or baseline references them. */
   protectedScans: number;
   deletedScans: number;
+  /** Rows deleted from the scan request log (Postgres only). */
+  deletedScanRequests: number;
 }
 
 /** Scan ids referenced by any monitor (run history + baseline). */
@@ -38,10 +43,12 @@ export async function runRetention(
 ): Promise<RetentionSummary> {
   const keep = await monitorScanIds();
   const deletedScans = await deleteExpiredScans(retentionDays, keep);
+  const deletedScanRequests = await deleteExpiredScanRequests(retentionDays);
   return {
     ranAt: now.toISOString(),
     retentionDays,
     protectedScans: keep.size,
     deletedScans,
+    deletedScanRequests,
   };
 }
