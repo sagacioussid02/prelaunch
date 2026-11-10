@@ -5,14 +5,16 @@
  * Actions, curl…) calls /api/monitor/{id}/deploy?token=…; that runs a passive
  * audit, diffs its blockers against the previous run and records an alert for
  * any NEW blocker. If an alert webhook (Slack/Discord/generic JSON) is
- * configured, it is notified too. Storage is the same JSON-file prototype
- * store; swap for Postgres with the rest of lib/store.ts.
+ * configured, it is notified too. Storage follows lib/store.ts (issue #3):
+ * Postgres via lib/db.ts when DATABASE_URL is set, the JSON-file store
+ * under DATA_ROOT otherwise. Only the internal load/save know which.
  */
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { DATA_ROOT, getScan, newScanId } from "./store.ts";
+import { dbConfigured, dbQuery } from "./db.ts";
 import { startScanJob } from "./jobs.ts";
 import { normalizeUrl } from "./scanner.ts";
 import { assertSafeHostname } from "./ssrf.ts";
@@ -66,6 +68,14 @@ async function fileFor(id: string): Promise<string> {
 }
 
 async function load(id: string): Promise<StoredMonitor | null> {
+  if (dbConfigured()) {
+    if (!/^[a-z0-9-]+$/i.test(id)) return null;
+    const rows = await dbQuery<{ data: StoredMonitor }>(
+      `SELECT data FROM monitors WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.data ?? null;
+  }
   try {
     return JSON.parse(await fs.readFile(await fileFor(id), "utf8")) as StoredMonitor;
   } catch {
@@ -74,6 +84,14 @@ async function load(id: string): Promise<StoredMonitor | null> {
 }
 
 async function save(m: StoredMonitor): Promise<void> {
+  if (dbConfigured()) {
+    await dbQuery(
+      `INSERT INTO monitors (id, data, updated_at) VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [m.id, JSON.stringify(m)],
+    );
+    return;
+  }
   const file = await fileFor(m.id);
   const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(m));

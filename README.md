@@ -22,7 +22,8 @@ lib/jobs.ts            background scan job with live per-check progress
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
-lib/store.ts           JSON file store (prototype) — swap for Neon at deploy
+lib/store.ts           storage: Neon Postgres + Vercel Blob when env is set, JSON files otherwise
+lib/db.ts              Postgres pool/schema for scans + monitors (issue #3)
 app/                   Next.js routes: landing, /r/[id] report, /api/scan, /api/badge
 scripts/test-scan.ts   self-test: vulnerable local fixture + passive real-world check
 scripts/scan-once.ts   CLI: node scripts/scan-once.ts <url> [--full] [--out report.html]
@@ -69,8 +70,10 @@ Zero dependencies — runs on stock Node 20+ (type-stripping; no build step).
 
 1. `npm install && npm run build`, deploy to a **private** `*.vercel.app`
    with Deployment Protection on — domain stays parameterized.
-2. Swap `lib/store.ts` for Postgres (Neon); upgrade the in-memory
-   `/api/scan` rate limit (5 scans/hour/IP) + SSRF guard + concurrency cap
-   to Upstash Ratelimit (Redis-backed) for multi-instance production.
+2. ~~Swap `lib/store.ts` for Postgres (Neon)~~ — done (issue #3): set
+   `DATABASE_URL` for scans/monitors and `BLOB_READ_WRITE_TOKEN` for
+   screenshots; unset means the JSON file store. Still to do: upgrade
+   the in-memory `/api/scan` rate limit (5 scans/hour/IP) + concurrency
+   cap to Upstash Ratelimit (Redis-backed) for multi-instance production.
 3. Dogfood: `--full` scans of Sidd's own Vercel projects.
 4. Domain (`prelaunchcheck.dev` recommended) attached only after his go-ahead.
