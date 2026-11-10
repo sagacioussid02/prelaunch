@@ -45,7 +45,7 @@ a{color:#7cb7ff}
 
 .panel{background:linear-gradient(160deg,#142033,#0d141d);border:1px solid var(--line);border-radius:20px;padding:24px;margin-top:40px}
 .panel h3{margin:0 0 6px;font-size:18px}
-.panel input[type=text],.panel input[type=url]{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0d1520;color:var(--text);margin:6px 0 10px;font-size:14px}
+.panel input[type=text],.panel input[type=url],.panel input[type=email]{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0d1520;color:var(--text);margin:6px 0 10px;font-size:14px}
 .panel label{font-size:13px;color:var(--muted)}
 .code{display:flex;gap:8px;align-items:center;background:#0a0f16;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;margin:8px 0}
 .code span{flex:1}
