@@ -1,14 +1,24 @@
 import { notFound } from "next/navigation";
 import { getMonitor } from "@/lib/monitor";
+import { verifyRunGrant } from "@/lib/runlink";
 import RunNow from "../../components/RunNow";
 
 const GRADE_COLOR: Record<string, string> = { "A+": "#22c55e", A: "#4ade80", B: "#a3e635", C: "#facc15", D: "#fb923c", F: "#f87171" };
 
 /** Monitor dashboard: /m/{id}. Lists every deploy audit and flags new blockers. */
-export default async function MonitorPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MonitorPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ grant?: string | string[] }>;
+}) {
   const { id } = await params;
   const m = await getMonitor(id).catch(() => null);
   if (!m) notFound();
+  // A valid signed grant (issue #6) lets "Run now" work without the token.
+  const rawGrant = (await searchParams).grant;
+  const grant = typeof rawGrant === "string" && verifyRunGrant(m.id, rawGrant) ? rawGrant : undefined;
   const runs = [...m.runs].reverse();
   const alerts = runs.filter((r) => r.newBlockers.length);
 
@@ -16,7 +26,12 @@ export default async function MonitorPage({ params }: { params: Promise<{ id: st
     <main className="page">
       <h1 className="hero-title" style={{ fontSize: 34 }}>Deploy monitor</h1>
       <p className="hero-sub" style={{ fontSize: 16, wordBreak: "break-all" }}>{m.url}</p>
-      <RunNow id={m.id} running={m.running} />
+      <RunNow id={m.id} running={m.running} grant={grant} />
+      {!grant && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Running an audit from here needs your deploy token: the <code>token=…</code> part of the deploy hook URL you got when you created this monitor.
+        </p>
+      )}
 
       <h2 className="section-title">Alerts</h2>
       {alerts.length === 0 ? (

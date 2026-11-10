@@ -4,6 +4,7 @@ import {
   findActiveMonitorByEmailUrl,
   listActiveMonitorsByEmail,
 } from "@/lib/monitor";
+import { mintRunGrant } from "@/lib/runlink";
 import {
   checkLimit,
   clientIp,
@@ -27,6 +28,10 @@ import type { ScanMode } from "@/lib/checks/types";
  *   → 201 { id, dashboard, deployHook, plan, usage?, note? } (the deploy
  *   token in deployHook is shown once). Creation previously answered
  *   200 here; step 5 makes it 201, matching the prototype route.
+ *   `dashboard` carries a signed 1-hour "Run now" grant when
+ *   PRELAUNCH_LINK_SECRET is set (lib/runlink.ts, issue #6); after that,
+ *   manual runs need the deploy token. The 409 duplicate response links
+ *   the existing monitor WITHOUT a grant: the caller hasn't proven they own it.
  *
  * `email` opts the monitor into regression email (lib/notify.ts) AND
  * identifies the owner for plan limits (lib/plans.ts, step 5): with
@@ -141,10 +146,13 @@ export async function POST(req: NextRequest) {
         "monitors run passive scans on deploy and on schedule in this build; the Pro full-mode allowance applies to one-off scans",
       );
     }
+    // Signed 1-hour grant so the creator's dashboard link can "Run now"
+    // without pasting the token (issue #6). Absent when PRELAUNCH_LINK_SECRET is unset.
+    const grant = mintRunGrant(m.id);
     return NextResponse.json({
       id: m.id,
       url: m.url,
-      dashboard: `${origin}/m/${m.id}`,
+      dashboard: `${origin}/m/${m.id}${grant ? `?grant=${encodeURIComponent(grant)}` : ""}`,
       deployHook: `${origin}/api/monitor/${m.id}/deploy?token=${m.token}`,
       plan: publicPlan(plan),
       ...(email

@@ -86,6 +86,8 @@ node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify 
 node scripts/test-deploy-hooks.ts   # deploy token accept/reject + cron-secret fail-closed
 node scripts/test-plans.ts       # plan limits: gate, counting, route 402/409/201
 node scripts/test-background-jobs.ts # scan deadline + stale expiry, 10-scan run, monitor running flag always clears
+node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
+node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 
