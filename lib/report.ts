@@ -80,6 +80,8 @@ export const REPORT_CSS = `
 .pl-verdict{position:relative;margin:18px auto 0;max-width:520px;border-radius:12px;padding:12px 16px;font-weight:600;font-size:15px}
 .pl-verdict.ok{background:#0f2a1a;color:#86efac;border:1px solid #14532d}
 .pl-verdict.bad{background:#2d1414;color:#fca5a5;border:1px solid #7f1d1d}
+.pl-partial{position:relative;margin:12px auto 0;max-width:520px;border-radius:12px;padding:12px 16px;
+  font-size:14px;line-height:1.5;text-align:left;background:#2a2110;color:#fde68a;border:1px solid #92600a}
 .pl-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px;position:relative}
 .pl-chip{background:#0d1520;border:1px solid var(--line);border-radius:12px;padding:8px 14px;font-size:13px;color:var(--muted)}
 .pl-chip b{display:block;font-size:22px;color:var(--text)}
@@ -256,6 +258,14 @@ export function renderReportBody(
       ? `<div class="pl-verdict ok">Ready to launch 🚀 — no blockers found.</div>`
       : `<div class="pl-verdict bad">${blockers.length} blocker${blockers.length > 1 ? "s" : ""} to fix before launch.</div>`;
 
+  // Issue #5: a scan whose browser never started must say so at the top,
+  // not bury it in an info finding — the grade below is partial.
+  const partialBanner = result.partial
+    ? `<div class="pl-partial">⚠ <b>Partial result — browser checks unavailable.</b> ${esc(result.partial)}. ` +
+      `The live simulations (real-browser load, mobile layout, accessibility, performance and user journeys) ` +
+      `did not run, so this grade covers the HTTP checks only.</div>`
+    : "";
+
   const date = new Date(result.finishedAt ?? result.startedAt).toLocaleString();
 
   const cta = opts.monitorSlot
@@ -271,9 +281,10 @@ export function renderReportBody(
         <circle class="fg" cx="60" cy="60" r="54" fill="none" stroke-width="9" style="stroke-dashoffset:${ring}"/></svg>
       <div class="num"><span class="score" data-count="${result.score}">${result.score}</span><span class="of">out of 100</span></div>
     </div>
-    <span class="pl-grade">Grade ${esc(result.grade)}</span>
+    <span class="pl-grade">Grade ${esc(result.grade)}${result.partial ? " · partial" : ""}</span>
     <div class="pl-target">${esc(result.url)}</div>
     ${verdict}
+    ${partialBanner}
     <div class="pl-chips">
       <div class="pl-chip"><b style="color:${SEVERITY_COLOR.blocker}">${blockers.length}</b>blockers</div>
       <div class="pl-chip"><b style="color:${SEVERITY_COLOR.warning}">${by("warning").length}</b>warnings</div>
@@ -323,7 +334,7 @@ export function renderReport(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PreLaunch Check — ${esc(result.grade)} (${result.score}) · ${esc(result.url)}</title>
+<title>PreLaunch Check — ${esc(result.grade)} (${result.score}${result.partial ? ", partial" : ""}) · ${esc(result.url)}</title>
 <style>body{margin:0;background:#0b0f14}</style>
 </head>
 <body>

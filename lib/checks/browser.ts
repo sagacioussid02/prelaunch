@@ -3,12 +3,25 @@
  *
  * One Chromium instance per scan, created lazily. Every request the browser
  * makes goes through the same SSRF guard as the HTTP scanner, so a page cannot
- * pull the scanner into internal addresses. If Chromium cannot be launched the
- * session is null and browser checks skip gracefully.
+ * pull the scanner into internal addresses.
+ *
+ * Launch resolution (issue #5 — stock Vercel functions ship no usable
+ * Chromium, which used to silently skip every simulation):
+ *   1. Serverless: `@sparticuz/chromium` + `playwright-core`, first when
+ *      running on Vercel (`VERCEL` env) or forced via PRELAUNCH_BROWSER=
+ *      serverless; also retried as a last resort when nothing local works.
+ *   2. An operator-pinned binary (PRELAUNCH_CHROMIUM_PATH).
+ *   3. Playwright's bundled Chromium (local dev after
+ *      `npx playwright install chromium`), then an installed Chrome.
+ * The outcome is explicit: getBrowserAvailability() reports which path won
+ * or why all failed, so the report can mark the grade partial and show a
+ * "browser checks unavailable" banner instead of skipping silently.
+ * PRELAUNCH_BROWSER=off disables the browser entirely (kill switch, used
+ * by scripts/test-browser.ts to exercise the unavailable path).
  */
 
 import type { Browser, BrowserContext, Page } from "playwright";
-import type { ScanContext } from "./types.ts";
+import type { BrowserAvailability, ScanContext } from "./types.ts";
 import { assertSafeHostname } from "../ssrf.ts";
 import { saveShot } from "../store.ts";
 
@@ -77,23 +90,149 @@ export interface BrowserSession {
 // HTTP fetcher's User-Agent (lib/checks/types.ts).
 const UA_SUFFIX = " PreLaunchCheck/0.1 (+https://prelaunch-check.vercel.app/privacy)";
 
-async function launch(): Promise<Browser | null> {
-  let chromium: typeof import("playwright").chromium;
+const LAUNCH_TIMEOUT_MS = 30_000;
+
+interface LaunchOutcome {
+  browser: Browser | null;
+  availability: BrowserAvailability;
+}
+
+function firstLine(err: unknown): string {
+  return String((err as Error)?.message ?? err).split("\n")[0].slice(0, 160);
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    ({ chromium } = await import("playwright"));
-  } catch {
-    return null;
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  // Bundled Chromium first, then an installed Google Chrome.
+}
+
+/** Serverless path: @sparticuz/chromium binary driven by playwright-core. */
+async function launchServerless(): Promise<Browser> {
+  const sparticuz = (await import("@sparticuz/chromium")).default as unknown as {
+    args: string[];
+    executablePath(): Promise<string>;
+    setGraphicsMode?: boolean;
+  };
+  // SwiftShader software GL is enough for screenshots and far lighter.
   try {
-    return await chromium.launch({ headless: true });
+    sparticuz.setGraphicsMode = false;
   } catch {
+    /* property shape differs across majors; launch args already cover it */
+  }
+  const { chromium } = await import("playwright-core");
+  const executablePath = await sparticuz.executablePath();
+  return chromium.launch({
+    args: sparticuz.args,
+    executablePath,
+    headless: true,
+  }) as Promise<Browser>;
+}
+
+/** Local dev path: Playwright's bundled Chromium (playwright install). */
+async function launchBundled(): Promise<Browser> {
+  const { chromium } = await import("playwright");
+  return chromium.launch({ headless: true });
+}
+
+/** Operator-pinned binary (also how CI images provide Chromium). */
+async function launchEnvPath(path: string): Promise<Browser> {
+  const { chromium } = await import("playwright-core");
+  // Container Chromium builds typically run without a usable sandbox.
+  return chromium.launch({
+    executablePath: path,
+    headless: true,
+    args: ["--no-sandbox"],
+  }) as Promise<Browser>;
+}
+
+async function launchChromeChannel(): Promise<Browser> {
+  const { chromium } = await import("playwright");
+  return chromium.launch({ headless: true, channel: "chrome" });
+}
+
+async function attemptLaunch(): Promise<LaunchOutcome> {
+  const mode = (process.env.PRELAUNCH_BROWSER ?? "").toLowerCase();
+  if (mode === "off") {
+    return {
+      browser: null,
+      availability: { state: "unavailable", reason: "browser disabled by PRELAUNCH_BROWSER=off" },
+    };
+  }
+  const failures: string[] = [];
+  const tryStep = async (label: string, fn: () => Promise<Browser>): Promise<Browser | null> => {
     try {
-      return await chromium.launch({ headless: true, channel: "chrome" });
-    } catch {
+      return await withTimeout(fn(), LAUNCH_TIMEOUT_MS, label);
+    } catch (err) {
+      failures.push(`${label}: ${firstLine(err)}`);
       return null;
     }
+  };
+
+  const serverlessFirst = !!process.env.VERCEL || mode === "serverless";
+  let browser: Browser | null = null;
+  let via: string | null = null;
+
+  if (serverlessFirst) {
+    browser = await tryStep("serverless chromium", launchServerless);
+    if (browser) via = "serverless (@sparticuz/chromium)";
   }
+  if (!browser && process.env.PRELAUNCH_CHROMIUM_PATH) {
+    browser = await tryStep("PRELAUNCH_CHROMIUM_PATH", () =>
+      launchEnvPath(process.env.PRELAUNCH_CHROMIUM_PATH as string),
+    );
+    if (browser) via = "PRELAUNCH_CHROMIUM_PATH";
+  }
+  if (!browser) {
+    browser = await tryStep("bundled chromium", launchBundled);
+    if (browser) via = "bundled playwright chromium";
+  }
+  if (!browser) {
+    browser = await tryStep("installed chrome", launchChromeChannel);
+    if (browser) via = "installed Chrome (channel)";
+  }
+  if (!browser && !serverlessFirst) {
+    // Last resort: the serverless binary also resolves off-Vercel.
+    browser = await tryStep("serverless chromium", launchServerless);
+    if (browser) via = "serverless (@sparticuz/chromium)";
+  }
+
+  if (browser && via) return { browser, availability: { state: "available", via } };
+  return {
+    browser: null,
+    availability: {
+      state: "unavailable",
+      reason: `no Chromium could be launched (${failures.join("; ")})`,
+    },
+  };
+}
+
+/** One launch attempt per scan, shared by the session and availability. */
+const launches = new WeakMap<ScanContext, Promise<LaunchOutcome>>();
+
+function ensureLaunch(ctx: ScanContext): Promise<LaunchOutcome> {
+  let p = launches.get(ctx);
+  if (!p) {
+    p = attemptLaunch();
+    launches.set(ctx, p);
+  }
+  return p;
+}
+
+/**
+ * Whether a browser could be started for this scan, and how (issue #5).
+ * Shares the single launch attempt with getSession().
+ */
+export function getBrowserAvailability(ctx: ScanContext): Promise<BrowserAvailability> {
+  return ensureLaunch(ctx).then((o) => o.availability);
 }
 
 async function guardContext(context: BrowserContext, readOnly: boolean): Promise<void> {
@@ -368,7 +507,7 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
 /** Returns the scan's shared session, or null when no browser is available. */
 export function getSession(ctx: ScanContext): Promise<BrowserSession | null> {
   if (!ctx.session) {
-    ctx.session = launch().then((b) => (b ? createSession(b, ctx) : null));
+    ctx.session = ensureLaunch(ctx).then((o) => (o.browser ? createSession(o.browser, ctx) : null));
   }
   return ctx.session as Promise<BrowserSession | null>;
 }

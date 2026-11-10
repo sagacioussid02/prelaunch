@@ -39,6 +39,16 @@ export interface Screenshot {
   height: number;
 }
 
+/**
+ * Whether the live-browser layer could start Chromium for this scan
+ * (issue #5). `via` names the launch path that won; `reason` is the
+ * human-readable summary of why every launch path failed, surfaced in
+ * the report's partial banner and the sim-load finding.
+ */
+export type BrowserAvailability =
+  | { state: "available"; via: string }
+  | { state: "unavailable"; reason: string };
+
 export interface CheckProgress {
   id: string;
   name: string;
@@ -102,6 +112,12 @@ export interface ScanResult {
   /** Live per-check progress; final state doubles as the "what we checked" list */
   progress?: CheckProgress[];
   screenshots?: Screenshot[];
+  /**
+   * Set when part of the scan could not run (issue #5: browser checks
+   * unavailable). The grade letter is kept, but the report must present
+   * the result as partial — never as a complete grade.
+   */
+  partial?: string;
   /** Set when status is "failed" */
   error?: string;
 }
