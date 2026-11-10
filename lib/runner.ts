@@ -27,8 +27,10 @@
  */
 
 import {
+  isRunStale,
   listStoredMonitors,
   runMonitor,
+  updateStoredMonitor,
   clampIntervalMinutes,
 } from "./monitor.ts";
 
@@ -59,6 +61,8 @@ export interface RunnerSummary {
   started: number;
   /** Candidates skipped because they were not due yet. */
   skippedNotDue: number;
+  /** Monitors whose stale `running` flag was cleared this run (issue #4). */
+  clearedStale: number;
   results: Array<{
     monitorId: string;
     url: string;
@@ -72,15 +76,34 @@ export interface RunnerSummary {
 export async function runDueMonitors(
   baseUrl: string,
   now = new Date(),
+  /**
+   * Receives each started run's completion promise so the cron route can
+   * keep the invocation alive until they are recorded (issue #4).
+   */
+  track?: (done: Promise<void>) => void,
 ): Promise<RunnerSummary> {
   const nowMs = now.getTime();
   const monitors = await listStoredMonitors();
+  // Sweep: a monitor whose function was frozen mid-run keeps `running: true`
+  // in storage. Clear it here so the dashboard and triggers see it as idle.
+  let clearedStale = 0;
+  for (const m of monitors) {
+    if (!isRunStale(m, nowMs)) continue;
+    try {
+      m.running = false;
+      await updateStoredMonitor(m);
+      clearedStale++;
+    } catch (err) {
+      console.error("runner: could not clear stale running flag", m.id, err);
+    }
+  }
   const candidates = monitors.filter((m) => m.enabled !== false && !!m.domainVerified);
   const summary: RunnerSummary = {
     checkedAt: now.toISOString(),
     candidates: candidates.length,
     started: 0,
     skippedNotDue: 0,
+    clearedStale,
     results: [],
   };
   for (const monitor of candidates) {
@@ -92,6 +115,7 @@ export async function runDueMonitors(
     try {
       const r = await runMonitor(monitor.id, "scheduled", baseUrl);
       if (r.ok) {
+        track?.(r.done);
         summary.started++;
         summary.results.push({ monitorId: monitor.id, url: monitor.url, status: "started", scanId: r.scanId });
       } else if (r.reason === "cooldown" || r.reason === "busy") {

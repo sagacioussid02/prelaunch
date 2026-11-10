@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getScan } from "@/lib/store";
+import { getScanChecked as getScan } from "@/lib/scanstatus";
 
 /** GET /api/scan/{id} — live status and per-check progress for the report page. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

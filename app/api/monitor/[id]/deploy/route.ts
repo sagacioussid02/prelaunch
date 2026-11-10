@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runMonitor, verifyToken } from "@/lib/monitor";
+import { keepAlive } from "@/lib/background";
 
 /**
  * POST /api/monitor/{id}/deploy?token=…  — call this from your deploy hook
@@ -18,10 +19,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const origin = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
   const r = await runMonitor(id, manual ? "manual" : "deploy", origin);
-  if (r.ok) return NextResponse.json({ scanId: r.scanId, report: `${origin}/r/${r.scanId}` }, { status: 202 });
+  if (r.ok) {
+    // Keep the scan and its diff/alert/email recording alive past the response (issue #4).
+    keepAlive(r.done);
+    return NextResponse.json({ scanId: r.scanId, report: `${origin}/r/${r.scanId}` }, { status: 202 });
+  }
   if (r.reason === "missing") return new NextResponse("not found", { status: 404 });
   return new NextResponse(r.reason === "cooldown" ? "audited too recently; try again shortly" : "audit already running", {
     status: 429,
     headers: r.retryInMs ? { "Retry-After": String(Math.ceil(r.retryInMs / 1000)) } : {},
   });
 }
+
+/** Covers the monitor scan run in after() (SCAN_DEADLINE_MS is 4 minutes). */
+export const maxDuration = 300;

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getScan } from "@/lib/store";
+import { getScanChecked as getScan } from "@/lib/scanstatus";
 import { renderReportBody } from "@/lib/report";
 import ReportShell from "../../components/ReportShell";
 import ScanProgress from "../../components/ScanProgress";

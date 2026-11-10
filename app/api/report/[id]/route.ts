@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getScan, getShot } from "@/lib/store";
+import { getShot } from "@/lib/store";
+import { getScanChecked as getScan } from "@/lib/scanstatus";
 import { renderReport } from "@/lib/report";
 
 /** GET /api/report/{id}[?format=json] — downloadable report; HTML embeds screenshots so it works offline. */

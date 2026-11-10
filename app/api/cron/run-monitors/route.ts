@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runDueMonitors } from "@/lib/runner";
 import { cronSecretValid } from "@/lib/ownership";
+import { keepAlive } from "@/lib/background";
 
 /**
  * GET/POST /api/cron/run-monitors — scheduled monitor runner (Vercel
@@ -19,7 +20,10 @@ async function handle(req: NextRequest) {
   }
   try {
     const origin = process.env.NEXT_PUBLIC_BASE_URL || req.nextUrl.origin;
-    const summary = await runDueMonitors(origin);
+    const pending: Promise<void>[] = [];
+    const summary = await runDueMonitors(origin, new Date(), (done) => pending.push(done));
+    // Started checks finish after the response; keep the invocation alive (issue #4).
+    if (pending.length) keepAlive(Promise.allSettled(pending));
     return NextResponse.json(summary);
   } catch (err) {
     console.error("cron run-monitors failed", err);
@@ -34,3 +38,6 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return handle(req);
 }
+
+/** Covers the monitor scans started in after() (SCAN_DEADLINE_MS is 4 minutes). */
+export const maxDuration = 300;
