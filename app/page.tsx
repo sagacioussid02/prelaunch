@@ -30,6 +30,17 @@ export default function Home() {
       </div>
 
       <WaitlistForm />
+
+      <footer
+        className="muted"
+        style={{ marginTop: 48, paddingTop: 16, borderTop: "1px solid #22303f", fontSize: 13 }}
+      >
+        <a href="/terms">Terms</a>
+        {" · "}
+        <a href="/privacy">Privacy</a>
+        {" · "}Site owners: our scanner identifies itself as{" "}
+        <code>PreLaunchCheck/0.1</code> — see Privacy for what it does and how to opt out.
+      </footer>
     </main>
   );
 }
