@@ -62,10 +62,26 @@ previous run — are emailed via Resend (`RESEND_API_KEY` + `NOTIFY_FROM`;
 without them the alert is recorded as "queued" and nothing is sent). Each
 incident emails once: the regression set is hashed, repeats are deduped, and
 a healthy run re-arms the alert. **Scheduled runs:** once a monitor's domain
-is verified (claim/verify endpoints), the hourly Vercel Cron hits
-`/api/cron/run-monitors` (Bearer `CRON_SECRET`, fails closed when unset) and
-re-audits on the monitor's cadence (`intervalMinutes`, default daily).
-Unverified or disabled monitors are never run on a schedule.
+is verified (claim/verify endpoints), `/api/cron/run-monitors` (Bearer
+`CRON_SECRET`, fails closed when unset) re-audits on the monitor's cadence
+(`intervalMinutes`, default daily). Unverified or disabled monitors are never
+run on a schedule.
+
+**Schedules on Vercel's free Hobby plan:** Hobby allows only daily crons, so
+`vercel.json` runs `/api/cron/run-monitors` once a day (06:00 UTC, a
+fallback) and `/api/cron/retention` once a day (04:30 UTC). The hourly
+trigger is the GitHub Actions workflow `.github/workflows/run-monitors.yml`,
+which needs the repo secret `CRON_SECRET` (same value as on Vercel) and the
+repo variable `PRELAUNCH_URL` (the production URL); until both are set it
+skips with a warning. The endpoint only starts monitors that are due, so the
+two triggers never double-run one; a monitor may run up to 30% of its
+interval (at most 45 minutes) early, so a trigger that fires a little
+earlier than the last one doesn't skip it. On the daily fallback alone, a
+daily monitor can occasionally skip a day, because Hobby crons fire anywhere
+in their hour. `vercel.json` also turns on Fluid
+compute, which gives Hobby functions the 300s `maxDuration` the scan routes
+use. GitHub pauses scheduled workflows after 60 days without repository
+activity; re-enable it from the Actions tab if that happens.
 
 **Plan limits:** when a monitor is created with an `email`, the owner is
 on the Free plan (1 active monitor, passive scans, daily cadence minimum)
@@ -86,6 +102,7 @@ node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify 
 node scripts/test-deploy-hooks.ts   # deploy token accept/reject + cron-secret fail-closed
 node scripts/test-plans.ts       # plan limits: gate, counting, route 402/409/201
 node scripts/test-background-jobs.ts # scan deadline + stale expiry, 10-scan run, monitor running flag always clears
+node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Fluid on, hourly GitHub Actions trigger
 node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
 node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html

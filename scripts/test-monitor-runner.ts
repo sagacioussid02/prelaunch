@@ -20,7 +20,7 @@ process.env.PRELAUNCH_ALLOW_LOOPBACK = "1";
 delete process.env.DATABASE_URL;
 delete process.env.BLOB_READ_WRITE_TOKEN;
 
-const { isMonitorDue, computeNextRun, runDueMonitors } = await import("../lib/runner.ts");
+const { isMonitorDue, dueGraceMs, computeNextRun, runDueMonitors } = await import("../lib/runner.ts");
 const {
   createMonitor,
   getMonitor,
@@ -47,6 +47,13 @@ function check(name: string, cond: boolean, detail = ""): void {
   check("due: future nextRunAt is not due", !isMonitorDue({ ...due, nextRunAt: new Date(now + 3600_000).toISOString() }, now));
   check("due: unverified never runs on schedule", !isMonitorDue({ ...due, domainVerified: false }, now));
   check("due: disabled never runs", !isMonitorDue({ ...due, enabled: false }, now));
+  // Grace for drifting triggers: 30% of the interval, capped at 45 minutes.
+  const hourly = { ...due, intervalMinutes: 60 };
+  check("grace: hourly monitor 10 min early is due", isMonitorDue({ ...hourly, nextRunAt: new Date(now + 10 * 60_000).toISOString() }, now));
+  check("grace: hourly monitor 25 min early is not due", !isMonitorDue({ ...hourly, nextRunAt: new Date(now + 25 * 60_000).toISOString() }, now));
+  check("grace: daily monitor 40 min early is due", isMonitorDue({ ...due, intervalMinutes: 1440, nextRunAt: new Date(now + 40 * 60_000).toISOString() }, now));
+  check("grace: daily monitor 61 min early is not due (no drift onto the previous hourly slot)", !isMonitorDue({ ...due, intervalMinutes: 1440, nextRunAt: new Date(now + 61 * 60_000).toISOString() }, now));
+  check("grace: capped at 45 minutes", dueGraceMs(10080) === 45 * 60_000 && dueGraceMs(60) === 18 * 60_000);
   check("nextRun: +1440 min is tomorrow", computeNextRun("2026-11-04T08:00:00.000Z", 1440) === "2026-11-05T08:00:00.000Z");
   check("interval clamp", clampIntervalMinutes(30) === 60 && clampIntervalMinutes(20000) === 10080 && clampIntervalMinutes(1440) === 1440 && clampIntervalMinutes("x") === 1440);
 }
