@@ -1,6 +1,8 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
   "crons": [
-    { "path": "/api/cron/run-monitors", "schedule": "0 * * * *" },
+    { "path": "/api/cron/run-monitors", "schedule": "0 6 * * *" },
     { "path": "/api/cron/retention", "schedule": "30 4 * * *" }
   ]
 }

@@ -39,6 +39,28 @@ export interface DueView {
   enabled?: boolean;
   domainVerified?: boolean;
   nextRunAt?: string | null;
+  intervalMinutes?: number;
+}
+
+/**
+ * Longest early-run allowance. Kept under the hourly trigger's spacing:
+ * a grace of an hour or more would let a daily monitor run on the trigger
+ * an hour before its slot, then an hour earlier the next day, and so on.
+ */
+export const MAX_DUE_GRACE_MS = 45 * 60_000;
+
+/**
+ * How early a monitor may run. The triggers are coarse and drift: GitHub
+ * Actions' hourly schedule often fires minutes late, and a Hobby daily cron
+ * lands anywhere in its hour. nextRunAt is set from the previous run's
+ * time, so without slack a trigger that lands a little earlier than the
+ * last one skips the monitor and its cadence doubles (hourly becomes every
+ * 2 hours). 30% of the interval, capped at MAX_DUE_GRACE_MS. Runs still
+ * happen only on triggers, so this snaps them to the trigger slot instead
+ * of drifting earlier.
+ */
+export function dueGraceMs(intervalMinutes: number | undefined): number {
+  return Math.min(MAX_DUE_GRACE_MS, clampIntervalMinutes(intervalMinutes ?? 1440) * 60_000 * 0.3);
 }
 
 /** Pure due check, unit-tested: never-scheduled verified monitors are due. */
@@ -46,7 +68,7 @@ export function isMonitorDue(m: DueView, nowMs: number): boolean {
   if (m.enabled === false) return false;
   if (!m.domainVerified) return false;
   if (!m.nextRunAt) return true;
-  return Date.parse(m.nextRunAt) <= nowMs;
+  return Date.parse(m.nextRunAt) - dueGraceMs(m.intervalMinutes) <= nowMs;
 }
 
 export function computeNextRun(fromIso: string, intervalMinutes: number): string {

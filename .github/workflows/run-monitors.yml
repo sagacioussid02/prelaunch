@@ -1,0 +1,48 @@
+# Hourly monitor runs, triggered from GitHub Actions.
+#
+# Vercel's free Hobby plan only allows daily crons, so vercel.json keeps a
+# daily run of /api/cron/run-monitors as a fallback and this workflow calls
+# the same endpoint every hour. The endpoint only starts monitors that are
+# due, so the two never double-run a monitor.
+#
+# Needs, in the repository's Settings > Secrets and variables > Actions:
+#   - secret   CRON_SECRET    same value as CRON_SECRET on the Vercel project
+#   - variable PRELAUNCH_URL  the production URL, e.g. https://prelaunch.example.com
+# Until both are set, each run logs a warning and does nothing.
+name: Run monitors
+
+on:
+  schedule:
+    - cron: "17 * * * *" # off the top of the hour, when GitHub's scheduler is busiest
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: run-monitors
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/run-monitors
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PRELAUNCH_URL: ${{ vars.PRELAUNCH_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$PRELAUNCH_URL" ]; then
+            echo "::warning::CRON_SECRET secret or PRELAUNCH_URL variable is not set; skipping."
+            exit 0
+          fi
+          url="${PRELAUNCH_URL%/}/api/cron/run-monitors"
+          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 60 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
+            -X POST -H "Authorization: Bearer $CRON_SECRET" "$url")
+          echo "HTTP $status"
+          head -c 4000 response.json; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::run-monitors returned HTTP $status"
+            exit 1
+          fi
