@@ -92,6 +92,7 @@ changes for Free users.
 
 ```bash
 node scripts/test-scan.ts        # fixture scan (expects F/0) + passive example.com scan
+node scripts/test-ssrf.ts        # SSRF guard: blocked ranges, IPv4-mapped IPv6, redirect-to-private hop
 node scripts/test-notifications.ts  # regression email: decision matrix, dedupe, delivery records
 node scripts/test-monitor-runner.ts # scheduled runner: due-selection + live fixture run
 node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify + tamper cases
@@ -105,7 +106,7 @@ node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 
-Zero dependencies — runs on stock Node 20+ (type-stripping; no build step).
+Zero dependencies — runs on stock Node 22.18+ (type-stripping; no build step).
 `npm install` is only needed for the Next.js app (`npm run dev`).
 
 ## Deploy checklist (next steps, not this run)
