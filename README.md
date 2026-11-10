@@ -69,12 +69,24 @@ Unverified or disabled monitors are never run on a schedule.
 
 **Plan limits:** when a monitor is created with an `email`, the owner is
 on the Free plan (1 active monitor, passive scans, daily cadence minimum)
-unless the address is listed in `PRO_EMAILS` — Pro allows 10 monitors,
+unless they hold Pro — Pro allows 10 monitors,
 full-mode scans, and hourly cadence. Duplicates return 409; plan-cap and
 full-mode-on-Free rejections return 402 with an upgrade hint, and a
 cadence below the plan minimum is raised to it (noted in the response).
 Limits gate creation only; runs, webhooks, and verification are never
 plan-gated.
+
+**Billing:** Pro is sold as a Stripe subscription (APIs only for now —
+the landing-page upgrade UI is a later step). `POST /api/billing/checkout`
+starts a hosted Checkout session for the Pro price (`STRIPE_PRICE_ID_PRO`,
+suggested $9/mo), `POST /api/billing/portal` opens the Stripe Billing
+Portal for the stored customer, `GET /api/billing/status?email=` reports
+the resolved plan, and `POST /api/billing/webhook` (signature-verified,
+fail-closed) syncs subscription state into the store. Plan resolution
+reads the stored subscription first — active/trialing/past_due is Pro —
+and falls back to the `PRO_EMAILS` list for manual grants. With no
+Stripe keys set, billing is off (checkout/portal 503) and nothing
+changes for Free users.
 
 ## Run the tests
 
@@ -85,6 +97,8 @@ node scripts/test-monitor-runner.ts # scheduled runner: due-selection + live fix
 node scripts/test-monitor-claim.ts  # domain verification: claim/publish/verify + tamper cases
 node scripts/test-deploy-hooks.ts   # deploy token accept/reject + cron-secret fail-closed
 node scripts/test-plans.ts       # plan limits: gate, counting, route 402/409/201
+node scripts/test-billing.ts     # billing: status matrix, event routing, store, plan resolution
+node scripts/test-billing-routes.ts # billing routes: checkout/portal/webhook via a stubbed Stripe
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 
