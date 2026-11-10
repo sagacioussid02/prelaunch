@@ -2,6 +2,12 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { startScanJob } from "@/lib/jobs";
 import { newScanId } from "@/lib/store";
+import {
+  checkLimit,
+  clientIp,
+  RATE_WINDOW_SECONDS,
+  SCANS_PER_HOUR_PER_IP,
+} from "@/lib/ratelimit";
 import type { ScanMode } from "@/lib/checks/types";
 
 /**
@@ -14,40 +20,17 @@ import type { ScanMode } from "@/lib/checks/types";
  *   ownership-proof flow (deploy-hook integration, v2) — accepted here only
  *   with an owner token header in prototype.
  *
- * Abuse controls (security review 2026-10-18, HIGH #2):
- * - Per-IP rate limit: 5 scans/hour (sliding window, in-memory).
- * - Concurrency cap: at most MAX_CONCURRENT_SCANS background scans at once.
+ * Abuse controls (security review 2026-10-18, HIGH #2; issue #6):
+ * - Per-IP rate limit: 5 scans/hour via lib/ratelimit.ts — Upstash Redis
+ *   counters shared across instances when configured, in-memory sliding
+ *   window fallback otherwise, fail-closed if Redis errors.
+ * - Concurrency cap: at most MAX_CONCURRENT_SCANS background scans at once
+ *   (still in-process; moving it into a queue is issue #4 / Phase 1).
  * - SSRF guard in lib/ssrf.ts validates every fetched URL incl. redirects.
- *
- * PROTOTYPE GRADE: the in-memory limiter resets on cold start / doesn't
- * share across instances. Swap in Upstash Ratelimit (Redis-backed) before
- * any public launch, per the deploy checklist.
  */
-const SCANS_PER_HOUR_PER_IP = 5;
-const RATE_WINDOW_MS = 60 * 60 * 1000;
 const MAX_CONCURRENT_SCANS = 2;
 
-const hits = new Map<string, number[]>(); // ip -> request timestamps
 let inFlight = 0;
-
-function clientIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const windowStart = now - RATE_WINDOW_MS;
-  const recent = (hits.get(ip) ?? []).filter((t) => t > windowStart);
-  if (recent.length >= SCANS_PER_HOUR_PER_IP) {
-    hits.set(ip, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(ip, recent);
-  return false;
-}
 
 /** Timing-safe compare that fails closed when the env var is unset. */
 function ownerTokenValid(provided: string | null): boolean {
@@ -59,11 +42,19 @@ function ownerTokenValid(provided: string | null): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = clientIp(req);
-  if (rateLimited(ip)) {
+  const ip = clientIp(req.headers);
+  const limit = await checkLimit(
+    `scan:${ip}`,
+    SCANS_PER_HOUR_PER_IP,
+    RATE_WINDOW_SECONDS,
+  );
+  if (!limit.allowed) {
     return new NextResponse(
       `rate limit exceeded: ${SCANS_PER_HOUR_PER_IP} scans/hour per IP`,
-      { status: 429, headers: { "Retry-After": "3600" } },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfterSeconds ?? 3600) },
+      },
     );
   }
   if (inFlight >= MAX_CONCURRENT_SCANS) {
