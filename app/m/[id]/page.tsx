@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMonitor } from "@/lib/monitor";
 import { verifyRunGrant } from "@/lib/runlink";
 import RunNow from "../../components/RunNow";
 
 const GRADE_COLOR: Record<string, string> = { "A+": "#22c55e", A: "#4ade80", B: "#a3e635", C: "#facc15", D: "#fb923c", F: "#f87171" };
+
+/** Issue #7: monitor dashboards are shareable by link but must not be indexed. */
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /** Monitor dashboard: /m/{id}. Lists every deploy audit and flags new blockers. */
 export default async function MonitorPage({

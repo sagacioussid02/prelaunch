@@ -73,7 +73,9 @@ export interface BrowserSession {
   close(): Promise<void>;
 }
 
-const UA_SUFFIX = " PreLaunchCheck/0.1";
+// Issue #7: browser visits carry the same privacy/opt-out pointer as the
+// HTTP fetcher's User-Agent (lib/checks/types.ts).
+const UA_SUFFIX = " PreLaunchCheck/0.1 (+https://prelaunch-check.vercel.app/privacy)";
 
 async function launch(): Promise<Browser | null> {
   let chromium: typeof import("playwright").chromium;

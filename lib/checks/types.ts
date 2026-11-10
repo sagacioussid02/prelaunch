@@ -184,7 +184,11 @@ export async function cachedGet(
   if (hit) return hit;
   try {
     const res = await fetchWithTimeout(url, timeoutMs, {
-      headers: { "User-Agent": "PreLaunchCheck/0.1 (pre-launch security audit)" },
+      // Issue #7: the UA names the privacy page (what we fetch, opt-out).
+      headers: {
+        "User-Agent":
+          "PreLaunchCheck/0.1 (pre-launch security audit; +https://prelaunch-check.vercel.app/privacy)",
+      },
     });
     const headers: Record<string, string> = {};
     res.headers.forEach((v, k) => {

@@ -37,6 +37,9 @@ export default function ScanForm() {
         </button>
       </form>
       <p className="err">{error}</p>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Only scan sites you own or have permission to test.
+      </p>
     </>
   );
 }

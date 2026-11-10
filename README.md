@@ -120,3 +120,7 @@ Zero dependencies — runs on stock Node 22.18+ (type-stripping; no build step).
    cap to Upstash Ratelimit (Redis-backed) for multi-instance production.
 3. Dogfood: `--full` scans of Sidd's own Vercel projects.
 4. Domain (`prelaunchcheck.dev` recommended) attached only after his go-ahead.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
