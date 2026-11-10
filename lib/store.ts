@@ -123,15 +123,23 @@ export async function getShot(id: string, name: string): Promise<Buffer | null> 
  * `retentionDays` (default 30) are deleted, with their screenshots.
  * Returns how many scans were deleted.
  *
- * This is the deletion primitive only — wiring it to a scheduled cron
- * route is a later step (Phase 1). Safe to call in either backend mode.
+ * `keep` holds scan ids that must survive regardless of age: the scans a
+ * monitor's history and baseline point at. Deleting those would break the
+ * monitor's diff (every blocker would look new) and its history links.
+ * lib/retention.ts builds that set and is what the daily cron calls.
+ * Safe to call in either backend mode.
  */
-export async function deleteExpiredScans(retentionDays = 30): Promise<number> {
+export async function deleteExpiredScans(
+  retentionDays = 30,
+  keep: ReadonlySet<string> = new Set(),
+): Promise<number> {
   if (dbConfigured()) {
     const rows = await dbQuery<{ id: string }>(
-      `DELETE FROM scans WHERE created_at < now() - make_interval(days => $1)
+      `DELETE FROM scans
+       WHERE created_at < now() - make_interval(days => $1)
+         AND NOT (id = ANY($2::text[]))
        RETURNING id`,
-      [retentionDays],
+      [retentionDays, [...keep]],
     );
     if (blobConfigured()) {
       for (const { id } of rows) {
@@ -156,6 +164,7 @@ export async function deleteExpiredScans(retentionDays = 30): Promise<number> {
   }
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
+    if (keep.has(entry.slice(0, -".json".length))) continue;
     const file = join(DATA_DIR, entry);
     try {
       const stat = await fs.stat(file);
@@ -169,7 +178,10 @@ export async function deleteExpiredScans(retentionDays = 30): Promise<number> {
   }
   try {
     const shotsDir = join(DATA_DIR, "shots");
+    const keepList = [...keep];
     for (const entry of await fs.readdir(shotsDir)) {
+      // Shot files are `{scanId}-{name}.jpg`; keep those of protected scans.
+      if (keepList.some((id) => entry.startsWith(`${id}-`))) continue;
       const file = join(shotsDir, entry);
       try {
         const stat = await fs.stat(file);
