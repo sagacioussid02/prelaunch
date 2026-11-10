@@ -8,6 +8,17 @@
  * configured, it is notified too. Storage follows lib/store.ts (issue #3):
  * Postgres via lib/db.ts when DATABASE_URL is set, the JSON-file store
  * under DATA_ROOT otherwise. Only the internal load/save know which.
+ *
+ * Monitoring v2 (Phase 0 step 4, reconciled with the local prototype):
+ * monitors gained an email channel with regression-only semantics and
+ * per-incident dedupe (lib/notify.ts), a baseline pointer, domain
+ * verification state (lib/ownership.ts; claim/verify endpoints), and a
+ * cadence (intervalMinutes/nextRunAt) consumed by the scheduled runner
+ * (lib/runner.ts, POST/GET /api/cron/run-monitors). All v2 fields are
+ * optional on the stored record and backfilled on read, so monitors
+ * created before the port keep working unchanged. The deploy token
+ * stays as before: a SHA-256 hash at rest, compared timing-safely —
+ * the per-monitor deploy secret for this codebase.
  */
 
 import { promises as fs } from "node:fs";
@@ -20,6 +31,20 @@ import { normalizeUrl } from "./scanner.ts";
 import { assertSafeHostname } from "./ssrf.ts";
 import { fetchWithTimeout } from "./checks/types.ts";
 import type { Finding } from "./checks/types.ts";
+import { normalizeEmail } from "./waitlist.ts";
+import {
+  VERIFICATION_PATH,
+  VERIFICATION_TIMEOUT_MS,
+  generateSecret,
+  verificationBodyMatches,
+} from "./ownership.ts";
+import {
+  computeRegression,
+  decideEmailNotification,
+  notifyRegression,
+  regressionHashFor,
+  type RunRegression,
+} from "./notify.ts";
 
 export const MONITOR_COOLDOWN_MS = 60_000;
 const MAX_RUNS = 50;
@@ -27,7 +52,7 @@ const MAX_RUNS = 50;
 export interface MonitorRun {
   scanId: string;
   at: string;
-  trigger: "baseline" | "deploy" | "manual";
+  trigger: "baseline" | "deploy" | "manual" | "scheduled";
   score: number;
   grade: string;
   blockers: number;
@@ -35,6 +60,8 @@ export interface MonitorRun {
   /** Blockers not present in the previous run */
   newBlockers: Array<Pick<Finding, "checkId" | "title" | "location" | "fix">>;
   alertSent: boolean;
+  /** True when the regression email was recorded as sent/queued (v2). */
+  emailSent?: boolean;
 }
 
 interface StoredMonitor {
@@ -46,16 +73,74 @@ interface StoredMonitor {
   lastRunAt?: string;
   running: boolean;
   runs: MonitorRun[];
+  /* ---- v2 fields (step 4): optional so pre-port rows stay valid ---- */
+  /** Regression-email address; null when unset. */
+  email?: string | null;
+  /** Default true: email only on regressions. False = email every non-baseline run. */
+  regressionOnly?: boolean;
+  /** False stops the scheduled runner (deploy/manual runs still work). */
+  enabled?: boolean;
+  /** Domain ownership proven via lib/ownership.ts claim/verify. */
+  domainVerified?: boolean;
+  /** Current claim token; never exposed by the public view. */
+  verificationToken?: string | null;
+  /** First completed run — the baseline every later run diffs against. */
+  baselineScanId?: string | null;
+  baselineScore?: number | null;
+  /** Scheduled cadence in minutes (60–10080); the runner's clock. */
+  intervalMinutes?: number;
+  /** Next scheduled run; null until the first completed run schedules one. */
+  nextRunAt?: string | null;
+  /** Dedupe state for regression email (lib/notify.ts). */
+  lastNotifiedHash?: string | null;
+  lastNotifiedAt?: string | null;
 }
 
-/** What the public dashboard may see (no secret hash, no webhook URL). */
+/** What the public dashboard may see (no secret hash, no webhook URL, no claim token, no raw email). */
 export interface PublicMonitor {
   id: string;
   url: string;
   createdAt: string;
   running: boolean;
   hasAlertWebhook: boolean;
+  hasNotifyEmail: boolean;
+  domainVerified: boolean;
+  enabled: boolean;
+  baselineScanId: string | null;
+  nextRunAt: string | null;
+  lastNotifiedAt: string | null;
   runs: MonitorRun[];
+}
+
+/** Clamp a requested cadence to the supported window; junk input gets the daily default. */
+export function clampIntervalMinutes(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1440;
+  return Math.min(10080, Math.max(60, Math.round(n)));
+}
+
+/**
+ * Backfill v2 fields for monitors created before the port. Legacy rows
+ * default to unverified (the scheduled runner will not touch them until
+ * the owner verifies the domain), email-less, regression-only, enabled,
+ * with the baseline read off the first recorded run when there is one.
+ */
+export function normalizeStoredMonitor(m: StoredMonitor): StoredMonitor {
+  const first = m.runs?.[0];
+  return {
+    ...m,
+    email: m.email ?? null,
+    regressionOnly: m.regressionOnly ?? true,
+    enabled: m.enabled ?? true,
+    domainVerified: m.domainVerified ?? false,
+    verificationToken: m.verificationToken ?? null,
+    baselineScanId: m.baselineScanId ?? (first ? first.scanId : null),
+    baselineScore: m.baselineScore ?? (first ? first.score : null),
+    intervalMinutes: clampIntervalMinutes(m.intervalMinutes ?? 1440),
+    nextRunAt: m.nextRunAt ?? null,
+    lastNotifiedHash: m.lastNotifiedHash ?? null,
+    lastNotifiedAt: m.lastNotifiedAt ?? null,
+  };
 }
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -74,13 +159,52 @@ async function load(id: string): Promise<StoredMonitor | null> {
       `SELECT data FROM monitors WHERE id = $1`,
       [id],
     );
-    return rows[0]?.data ?? null;
+    return rows[0] ? normalizeStoredMonitor(rows[0].data) : null;
   }
   try {
-    return JSON.parse(await fs.readFile(await fileFor(id), "utf8")) as StoredMonitor;
+    const raw = JSON.parse(await fs.readFile(await fileFor(id), "utf8")) as StoredMonitor;
+    return normalizeStoredMonitor(raw);
   } catch {
     return null;
   }
+}
+
+/** Internal record (includes secrets) for the runner and claim/verify routes. */
+export async function getStoredMonitor(id: string): Promise<StoredMonitor | null> {
+  return load(id);
+}
+
+/** Persist an internal record obtained via getStoredMonitor/listStoredMonitors. */
+export async function updateStoredMonitor(m: StoredMonitor): Promise<void> {
+  await save(m);
+}
+
+/** Every monitor, normalized — the scheduled runner's working set. */
+export async function listStoredMonitors(): Promise<StoredMonitor[]> {
+  if (dbConfigured()) {
+    const rows = await dbQuery<{ data: StoredMonitor }>(
+      `SELECT data FROM monitors ORDER BY created_at`,
+    );
+    return rows.map((r) => normalizeStoredMonitor(r.data));
+  }
+  const dir = join(DATA_ROOT, "monitors");
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: StoredMonitor[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    try {
+      const raw = JSON.parse(await fs.readFile(join(dir, entry), "utf8")) as StoredMonitor;
+      out.push(normalizeStoredMonitor(raw));
+    } catch {
+      // Corrupt or half-written file — skip it, never fail the whole run.
+    }
+  }
+  return out;
 }
 
 async function save(m: StoredMonitor): Promise<void> {
@@ -99,13 +223,20 @@ async function save(m: StoredMonitor): Promise<void> {
 }
 
 function toPublic(m: StoredMonitor): PublicMonitor {
+  const n = normalizeStoredMonitor(m);
   return {
-    id: m.id,
-    url: m.url,
-    createdAt: m.createdAt,
-    running: m.running,
-    hasAlertWebhook: !!m.alertWebhook,
-    runs: m.runs,
+    id: n.id,
+    url: n.url,
+    createdAt: n.createdAt,
+    running: n.running,
+    hasAlertWebhook: !!n.alertWebhook,
+    hasNotifyEmail: !!n.email,
+    domainVerified: !!n.domainVerified,
+    enabled: n.enabled !== false,
+    baselineScanId: n.baselineScanId ?? null,
+    nextRunAt: n.nextRunAt ?? null,
+    lastNotifiedAt: n.lastNotifiedAt ?? null,
+    runs: n.runs,
   };
 }
 
@@ -132,10 +263,16 @@ async function assertWebhook(raw: string): Promise<string> {
 export async function createMonitor(
   rawUrl: string,
   alertWebhook?: string,
+  opts: { email?: string | null; intervalMinutes?: unknown; regressionOnly?: boolean } = {},
 ): Promise<{ id: string; token: string; url: string }> {
   const url = normalizeUrl(rawUrl);
   await assertSafeHostname(new URL(url).hostname);
   const hook = alertWebhook?.trim() ? await assertWebhook(alertWebhook.trim()) : undefined;
+  let email: string | null = null;
+  if (opts.email != null && String(opts.email).trim() !== "") {
+    email = normalizeEmail(opts.email);
+    if (!email) throw new Error("invalid email");
+  }
   const id = randomUUID();
   const token = randomBytes(24).toString("hex");
   await save({
@@ -146,6 +283,17 @@ export async function createMonitor(
     createdAt: new Date().toISOString(),
     running: false,
     runs: [],
+    email,
+    regressionOnly: opts.regressionOnly ?? true,
+    enabled: true,
+    domainVerified: false,
+    verificationToken: null,
+    baselineScanId: null,
+    baselineScore: null,
+    intervalMinutes: clampIntervalMinutes(opts.intervalMinutes ?? 1440),
+    nextRunAt: null,
+    lastNotifiedHash: null,
+    lastNotifiedAt: null,
   });
   return { id, token, url };
 }
@@ -170,10 +318,10 @@ async function sendAlert(m: StoredMonitor, run: MonitorRun, reportUrl: string): 
   }
 }
 
-export type RunStart = { ok: true; scanId: string } | { ok: false; reason: "cooldown" | "busy" | "missing"; retryInMs?: number };
+export type RunStart = { ok: true; scanId: string } | { ok: false; reason: "cooldown" | "busy" | "missing" | "error"; retryInMs?: number };
 
 /** Starts an audit in the background; the result is diffed and recorded when it finishes. */
-export async function runMonitor(id: string, trigger: "deploy" | "manual", baseUrl: string): Promise<RunStart> {
+export async function runMonitor(id: string, trigger: "deploy" | "manual" | "scheduled", baseUrl: string): Promise<RunStart> {
   const m = await load(id);
   if (!m) return { ok: false, reason: "missing" };
   const since = m.lastRunAt ? Date.now() - new Date(m.lastRunAt).getTime() : Infinity;
@@ -187,7 +335,19 @@ export async function runMonitor(id: string, trigger: "deploy" | "manual", baseU
   m.lastRunAt = new Date().toISOString();
   await save(m);
 
-  const job = await startScanJob(m.url, "passive", scanId);
+  let job: Awaited<ReturnType<typeof startScanJob>>;
+  try {
+    job = await startScanJob(m.url, "passive", scanId);
+  } catch (err) {
+    // The job could not even start: never leave the monitor wedged in
+    // `running` — clear the flag so the next trigger is not told "busy"
+    // until the 5-minute stale window expires.
+    const fresh = (await load(id)) ?? m;
+    fresh.running = false;
+    await save(fresh).catch(() => {});
+    console.error("monitor scan failed to start", id, err);
+    return { ok: false, reason: "error" };
+  }
   void job.done.then(async (result) => {
     const fresh = (await load(id)) ?? m;
     fresh.running = false;
@@ -211,9 +371,136 @@ export async function runMonitor(id: string, trigger: "deploy" | "manual", baseU
         alertSent: false,
       };
       if (newBlockers.length) run.alertSent = await sendAlert(fresh, run, `${baseUrl}/r/${scanId}`);
+
+      /* ---- v2: baseline, regression email, schedule advance ---- */
+      if (!fresh.baselineScanId) {
+        fresh.baselineScanId = scanId;
+        fresh.baselineScore = result.score;
+      }
+      const prevFindings = prevScan?.findings ?? [];
+      const prevKeys = new Set(prevFindings.map(key));
+      const nowKeys = new Set(result.findings.map(key));
+      const info: RunRegression = {
+        newBlockers,
+        prevScore: prev ? prev.score : null,
+        nextScore: result.score,
+        prevGrade: prev ? prev.grade : null,
+        nextGrade: result.grade,
+        newFindingsCount: result.findings.filter((f) => !prevKeys.has(key(f))).length,
+        resolvedCount: prevFindings.filter((f) => !nowKeys.has(key(f))).length,
+      };
+
+      const regression = computeRegression({
+        prevScore: info.prevScore,
+        nextScore: info.nextScore,
+        newBlockers,
+      });
+      const hash = regressionHashFor({
+        newBlockers,
+        prevScore: info.prevScore,
+        nextScore: info.nextScore,
+      });
+      const decision = decideEmailNotification({
+        email: fresh.email ?? null,
+        regressionOnly: fresh.regressionOnly !== false,
+        isBaseline: !prev,
+        regression,
+        hash,
+        lastNotifiedHash: fresh.lastNotifiedHash ?? null,
+      });
+      if (decision.action === "skip" && decision.clearHash) fresh.lastNotifiedHash = null;
+      if (decision.action === "send") {
+        try {
+          const record = await notifyRegression({
+            monitorId: id,
+            monitorUrl: fresh.url,
+            email: fresh.email ?? null,
+            regressionOnly: fresh.regressionOnly !== false,
+            regression,
+            info,
+            scanId,
+            reportUrl: `${baseUrl}/r/${scanId}`,
+          });
+          if (record) {
+            run.emailSent = record.status !== "failed";
+            fresh.lastNotifiedHash = hash;
+            fresh.lastNotifiedAt = record.createdAt;
+          }
+        } catch (err) {
+          // A notification-store failure must not lose the run itself.
+          console.error("monitor notification failed", id, err);
+        }
+      }
+      fresh.nextRunAt = new Date(
+        Date.parse(run.at) + clampIntervalMinutes(fresh.intervalMinutes ?? 1440) * 60_000,
+      ).toISOString();
+
       fresh.runs = [...fresh.runs, run].slice(-MAX_RUNS);
     }
     await save(fresh);
   });
   return { ok: true, scanId };
+}
+
+/* ---------------- domain verification (step 4, PR-B) ---------------- */
+
+/**
+ * Issue (or re-issue) a domain-verification claim token for a monitor.
+ * Re-issuing invalidates the previous token — the newest token is the
+ * only one verify accepts — so a leaked token is revoked by re-claiming.
+ * Throws "monitor not found" for an unknown id (routes map it to 404).
+ */
+export async function requestVerificationClaim(
+  id: string,
+): Promise<{ token: string; path: string; url: string }> {
+  const m = await load(id);
+  if (!m) throw new Error("monitor not found");
+  m.verificationToken = generateSecret(16);
+  await save(m);
+  return {
+    token: m.verificationToken,
+    path: VERIFICATION_PATH,
+    url: `${m.url}${VERIFICATION_PATH}`,
+  };
+}
+
+/**
+ * Verify domain ownership: fetch the well-known file from the monitored
+ * site (SSRF-guarded, the same fetcher the scanner uses) and compare
+ * its body to the current claim token. On match the monitor is marked
+ * verified, which is what entitles it to scheduled runs. On any fetch
+ * failure or mismatch it stays unverified and the caller gets a reason,
+ * not a crash — a site that blocks bots must not 500.
+ */
+export async function verifyDomainOwnership(
+  id: string,
+): Promise<{ verified: boolean; reason: string }> {
+  const m = await load(id);
+  if (!m) throw new Error("monitor not found");
+  if (!m.verificationToken) {
+    return { verified: false, reason: "no verification token — claim one first" };
+  }
+  let body = "";
+  let status = 0;
+  try {
+    const res = await fetchWithTimeout(`${m.url}${VERIFICATION_PATH}`, VERIFICATION_TIMEOUT_MS, {
+      headers: { "User-Agent": "PreLaunchCheck/0.1 (ownership verification)" },
+    });
+    status = res.status;
+    body = await res.text().catch(() => "");
+  } catch (err) {
+    return {
+      verified: false,
+      reason: `verification fetch failed: ${String((err as Error).message ?? err)}`,
+    };
+  }
+  if (status !== 200) {
+    return { verified: false, reason: `verification file returned ${status}` };
+  }
+  if (!verificationBodyMatches(body, m.verificationToken)) {
+    return { verified: false, reason: "verification file content does not match the claim token" };
+  }
+  m.domainVerified = true;
+  await save(m);
+  return { verified: true, reason: "verified" };
 }

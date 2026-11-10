@@ -4,8 +4,8 @@
  *
  * Ported from the prototype stack (launch prep part 2, 2026-10-29), where
  * it backed /api/scan (5/hr/IP) and /api/waitlist (10/hr/IP). Here it backs
- * POST /api/scan and POST /api/monitor (creation); the waitlist limit
- * constant below is exported ready for step 3, which adds /api/waitlist.
+ * POST /api/scan and POST /api/monitor (creation) since step 2, and
+ * POST /api/waitlist since step 3.
  *
  * Production (UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN set):
  * fixed-window counters in Upstash Redis via its HTTP REST API — no SDK
@@ -32,7 +32,7 @@ export interface LimitResult {
 /** Per-IP hourly limits, shared by the API routes. */
 export const SCANS_PER_HOUR_PER_IP = 5;
 export const MONITORS_PER_HOUR_PER_IP = 10;
-/** Step 3 (/api/waitlist) uses this; defined here so the route only wires it. */
+/** Used by /api/waitlist (step 3); defined here so the route only wires it. */
 export const WAITLIST_SIGNUPS_PER_HOUR_PER_IP = 10;
 export const RATE_WINDOW_SECONDS = 3600;
 
