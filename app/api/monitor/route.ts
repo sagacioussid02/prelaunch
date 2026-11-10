@@ -12,11 +12,11 @@ import {
 } from "@/lib/ratelimit";
 import { normalizeUrl } from "@/lib/scanner";
 import { normalizeEmail } from "@/lib/waitlist";
+import { planForEmailAsync } from "@/lib/billing";
 import {
   FREE_PLAN,
   checkCreateAllowed,
   clampIntervalForPlan,
-  planForEmail,
   publicPlan,
   type Plan,
 } from "@/lib/plans";
@@ -32,7 +32,10 @@ import type { ScanMode } from "@/lib/checks/types";
  * identifies the owner for plan limits (lib/plans.ts, step 5): with
  * an email, creation is gated — duplicate owner+URL → 409, plan
  * monitor cap or full-mode-on-Free → 402 with { code, plan, limit,
- * upgrade } so the client can render an upgrade prompt. The cadence
+ * upgrade } so the client can render an upgrade prompt. The plan now
+ * resolves via lib/billing.ts `planForEmailAsync` (step 6) — a
+ * stored Stripe subscription in a Pro status wins; the PRO_EMAILS
+ * list remains the fallback for deployer-granted Pro. The cadence
  * is raised to the plan floor (Free: daily) with a note in the
  * response, never silently. `intervalMinutes` otherwise sets the
  * scheduled-runner cadence (clamped to 60–10080, default daily).
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
   if (body.email != null && String(body.email).trim() !== "") {
     email = normalizeEmail(body.email);
     if (!email) return new NextResponse("invalid email", { status: 400 });
-    plan = planForEmail(email);
+    plan = await planForEmailAsync(email);
     const mode: ScanMode = body.mode === "full" ? "full" : "passive";
     let normalizedUrl: string;
     try {
@@ -109,7 +112,7 @@ export async function POST(req: NextRequest) {
           ...(plan.id === "free" && gate.code !== "duplicate"
             ? {
                 upgrade:
-                  "Pro allows 10 monitors, full-mode scans and hourly checks.",
+                  "Pro allows 10 monitors, full-mode scans and hourly checks. Upgrade via POST /api/billing/checkout.",
               }
             : {}),
           ...(existing

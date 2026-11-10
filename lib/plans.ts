@@ -13,10 +13,12 @@
  * Free: 1 monitor, passive scans only, daily checks (1440 min floor).
  * Pro:  10 monitors, full scans allowed, hourly checks (60 min floor).
  *
- * Plan resolution in this step is the PRO_EMAILS env list only (the
- * deployer-granted stand-in). Step 6 (billing) swaps the lookup
- * source for a stored-subscription check; the route keys off Plan,
- * not off the env var, so that change won't touch the gate.
+ * Plan resolution: billing (step 6, lib/billing.ts) is primary —
+ * the monitor route calls `planForEmailAsync`, where a stored Stripe
+ * subscription in a Pro status wins. The sync `planForEmail` below
+ * (PRO_EMAILS env list) remains as the fallback for deployer-granted
+ * Pro and for runs without Stripe. The gate keys off Plan, not off
+ * the lookup source.
  *
  * Counting semantics live in lib/monitor.ts: listActiveMonitorsByEmail
  * counts the owner's monitors with enabled !== false — the repo's
