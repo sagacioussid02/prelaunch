@@ -1,0 +1,77 @@
+/**
+ * Production persistence for scans and monitors (issue #3, Phase 0 step 1).
+ *
+ * Ported from the local prototype's lib/db.ts. When DATABASE_URL is set
+ * (Neon Postgres at deploy), Postgres is the authoritative store for scans
+ * and monitors, behind the existing lib/store.ts / lib/monitor.ts
+ * interfaces. When it is unset, callers fall back to the JSON-file store —
+ * local dev and scripts/test-scan.ts need no infra.
+ *
+ * Deliberate choice: when DATABASE_URL IS set, a connection failure
+ * propagates as an error instead of silently falling back to files,
+ * because on Vercel the filesystem is ephemeral and a quiet fallback
+ * would lose scan reports and monitor baselines.
+ *
+ * Screenshots are NOT stored here — they go to Vercel Blob when
+ * BLOB_READ_WRITE_TOKEN is set (see lib/store.ts).
+ *
+ * Schema is created lazily on first use (CREATE TABLE IF NOT EXISTS), so
+ * no separate migration step is needed for the Neon database.
+ */
+
+import { Pool } from "pg";
+
+let pool: Pool | null = null;
+let schemaReady: Promise<void> | null = null;
+
+export function dbConfigured(): boolean {
+  return !!process.env.DATABASE_URL;
+}
+
+function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      // Neon requires TLS; `pg` negotiates it from the connection string.
+      max: 5,
+      idleTimeoutMillis: 30_000,
+    });
+    pool.on("error", (err) => {
+      // Idle-client errors must not crash the function silently.
+      console.error("pg pool error", err);
+    });
+  }
+  return pool;
+}
+
+async function ensureSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      const client = getPool();
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS scans (
+          id TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS monitors (
+          id TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+      `);
+    })();
+  }
+  return schemaReady;
+}
+
+export async function dbQuery<T = unknown>(
+  text: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  await ensureSchema();
+  const res = await getPool().query(text, params);
+  return res.rows as T[];
+}
