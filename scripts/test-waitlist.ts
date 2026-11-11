@@ -42,6 +42,8 @@ process.env.PRELAUNCH_DATA_DIR = dataDir;
 delete process.env.DATABASE_URL;
 delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
+delete process.env.KV_REST_API_URL;
+delete process.env.KV_REST_API_TOKEN;
 
 // "@/..." alias hook. Customization hooks run in a worker thread and need
 // a real file, so write it into the temp dir with the repo root baked in.

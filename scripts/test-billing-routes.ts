@@ -31,6 +31,8 @@ delete process.env.DATABASE_URL;
 delete process.env.BLOB_READ_WRITE_TOKEN;
 delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
+delete process.env.KV_REST_API_URL;
+delete process.env.KV_REST_API_TOKEN;
 delete process.env.PRO_EMAILS;
 delete process.env.APP_URL;
 delete process.env.STRIPE_SECRET_KEY;

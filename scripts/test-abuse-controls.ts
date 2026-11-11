@@ -108,14 +108,21 @@ const self = fileURLToPath(import.meta.url);
 try {
   // ---- 1. cross-instance per-IP limit (async spawn so the fake Redis keeps serving) ----
   {
-    const runInstance = (n: number) =>
+    // Instance A uses Upstash's own env names; instance B uses the KV_REST_API_*
+    // names the Vercel Marketplace integration adds. Both must share one counter.
+    const runInstance = (n: number, names: "upstash" | "kv") =>
       new Promise<number[]>((resolve) => {
+        const redisEnv =
+          names === "upstash"
+            ? { UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${uAddr.port}`, UPSTASH_REDIS_REST_TOKEN: "test-token" }
+            : { KV_REST_API_URL: `http://127.0.0.1:${uAddr.port}`, KV_REST_API_TOKEN: "test-token" };
+        const base = { ...process.env };
+        for (const k of ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_URL", "KV_REST_API_TOKEN"]) delete base[k];
         const child = spawn(process.execPath, [self, "instance", String(n)], {
           env: {
-            ...process.env,
+            ...base,
             PRELAUNCH_DATA_DIR: mkdtempSync(join(tmpdir(), "pl-abuse-inst-")),
-            UPSTASH_REDIS_REST_URL: `http://127.0.0.1:${uAddr.port}`,
-            UPSTASH_REDIS_REST_TOKEN: "test-token",
+            ...redisEnv,
             TEST_FIXTURE_URL: fixtureUrl,
           },
           stdio: ["ignore", "pipe", "inherit"],
@@ -127,11 +134,11 @@ try {
           resolve(m ? (JSON.parse(m[1]) as number[]) : []);
         });
       });
-    const a = await runInstance(3);
-    const b = await runInstance(3);
+    const a = await runInstance(3, "upstash");
+    const b = await runInstance(3, "kv");
     check("cross-instance: instance A's 3 scans accepted", a.length === 3 && a.every((s) => s === 200), JSON.stringify(a));
     check(
-      "cross-instance: instance B gets 429 on the 6th scan from the same IP",
+      "cross-instance: instance B (KV_REST_API_* names) gets 429 on the 6th scan from the same IP",
       b.length === 3 && b[0] === 200 && b[1] === 200 && b[2] === 429,
       JSON.stringify(b),
     );
@@ -141,6 +148,8 @@ try {
   // ---- in-process route tests (in-memory limiter) ----
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.KV_REST_API_URL;
+  delete process.env.KV_REST_API_TOKEN;
   const logs: string[] = [];
   const origLog = console.log;
   console.log = (...args: unknown[]) => {
