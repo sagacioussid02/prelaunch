@@ -1,19 +1,20 @@
-# Hourly monitor runs, triggered from GitHub Actions.
+# Monitor runs every 6 hours, triggered from GitHub Actions.
 #
 # Vercel's free Hobby plan only allows daily crons, so vercel.json keeps a
 # daily run of /api/cron/run-monitors as a fallback and this workflow calls
-# the same endpoint every hour. The endpoint only starts monitors that are
+# the same endpoint every 6 hours (hourly was more scans than wanted). The endpoint only starts monitors that are
 # due, so the two never double-run a monitor.
 #
 # Needs, in the repository's Settings > Secrets and variables > Actions:
 #   - secret   CRON_SECRET    same value as CRON_SECRET on the Vercel project
 #   - variable PRELAUNCH_URL  the production URL, e.g. https://prelaunch.example.com
+#                             (a secret of that name works too)
 # Until both are set, each run logs a warning and does nothing.
 name: Run monitors
 
 on:
   schedule:
-    - cron: "17 * * * *" # off the top of the hour, when GitHub's scheduler is busiest
+    - cron: "17 */6 * * *" # 00:17, 06:17, 12:17, 18:17 UTC; off the top of the hour, when GitHub's scheduler is busiest
   workflow_dispatch: {}
 
 permissions: {}
@@ -30,10 +31,11 @@ jobs:
       - name: Call /api/cron/run-monitors
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          PRELAUNCH_URL: ${{ vars.PRELAUNCH_URL }}
+          PRELAUNCH_URL: ${{ vars.PRELAUNCH_URL || secrets.PRELAUNCH_URL }}
         run: |
           if [ -z "$CRON_SECRET" ] || [ -z "$PRELAUNCH_URL" ]; then
-            echo "::warning::CRON_SECRET secret or PRELAUNCH_URL variable is not set; skipping."
+            [ -z "$CRON_SECRET" ] && echo "::warning::CRON_SECRET secret is not set; skipping."
+            [ -z "$PRELAUNCH_URL" ] && echo "::warning::PRELAUNCH_URL (repo variable or secret) is not set; skipping."
             exit 0
           fi
           url="${PRELAUNCH_URL%/}/api/cron/run-monitors"

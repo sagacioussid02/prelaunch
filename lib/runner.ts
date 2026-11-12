@@ -43,15 +43,16 @@ export interface DueView {
 }
 
 /**
- * Longest early-run allowance. Kept under the hourly trigger's spacing:
- * a grace of an hour or more would let a daily monitor run on the trigger
- * an hour before its slot, then an hour earlier the next day, and so on.
+ * Longest early-run allowance. Kept well under the trigger spacing (6
+ * hours from GitHub Actions, or hourly if a faster scheduler is used): a
+ * grace as long as the spacing would let a monitor run on the trigger
+ * before its slot, then one earlier the next time, and so on.
  */
 export const MAX_DUE_GRACE_MS = 45 * 60_000;
 
 /**
  * How early a monitor may run. The triggers are coarse and drift: GitHub
- * Actions' hourly schedule often fires minutes late, and a Hobby daily cron
+ * Actions' schedule often fires minutes late, and a Hobby daily cron
  * lands anywhere in its hour. nextRunAt is set from the previous run's
  * time, so without slack a trigger that lands a little earlier than the
  * last one skips the monitor and its cadence doubles (hourly becomes every

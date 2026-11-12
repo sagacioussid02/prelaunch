@@ -69,11 +69,13 @@ run on a schedule.
 
 **Schedules on Vercel's free Hobby plan:** Hobby allows only daily crons, so
 `vercel.json` runs `/api/cron/run-monitors` once a day (06:00 UTC, a
-fallback) and `/api/cron/retention` once a day (04:30 UTC). The hourly
-trigger is the GitHub Actions workflow `.github/workflows/run-monitors.yml`,
-which needs the repo secret `CRON_SECRET` (same value as on Vercel) and the
-repo variable `PRELAUNCH_URL` (the production URL); until both are set it
-skips with a warning. The endpoint only starts monitors that are due, so the
+fallback) and `/api/cron/retention` once a day (04:30 UTC). The GitHub
+Actions workflow `.github/workflows/run-monitors.yml` adds a run every 6
+hours (00:17, 06:17, 12:17, 18:17 UTC). It needs the repo secret
+`CRON_SECRET` (same value as on Vercel) and `PRELAUNCH_URL` (the production
+URL, as a repo variable or secret); until both are set it skips with a
+warning. Monitors with a shorter cadence (Pro's hourly) therefore run at most
+every 6 hours. The endpoint only starts monitors that are due, so the
 two triggers never double-run one; a monitor may run up to 30% of its
 interval (at most 45 minutes) early, so a trigger that fires a little
 earlier than the last one doesn't skip it. On the daily fallback alone, a
@@ -118,7 +120,7 @@ node scripts/test-plans.ts       # plan limits: gate, counting, route 402/409/20
 node scripts/test-billing.ts     # billing: status matrix, event routing, store, plan resolution
 node scripts/test-billing-routes.ts # billing routes: checkout/portal/webhook via a stubbed Stripe
 node scripts/test-background-jobs.ts # scan deadline + stale expiry, 10-scan run, monitor running flag always clears
-node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Fluid on, hourly GitHub Actions trigger
+node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Fluid on, 6-hourly GitHub Actions trigger
 node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
 node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
 node scripts/test-check-outcomes.ts # each check shows passed / issues / failed / didn't run with the reason; partial scans aren't "ready to launch"

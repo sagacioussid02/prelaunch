@@ -3,7 +3,7 @@
  *
  * Vercel's Hobby plan rejects a deployment whose vercel.json has a cron
  * that runs more than once a day, so every cron here must be daily. The
- * hourly monitor trigger lives in .github/workflows/run-monitors.yml.
+ * 6-hourly monitor trigger lives in .github/workflows/run-monitors.yml.
  *
  * Run: node scripts/test-deploy-config.ts
  */
@@ -42,10 +42,10 @@ check("vercel.json: daily run-monitors fallback present", crons.some((c) => c.pa
 check("vercel.json: Fluid compute on (300s maxDuration on Hobby)", vercel.fluid === true);
 
 const wf = readFileSync(new URL("../.github/workflows/run-monitors.yml", import.meta.url), "utf8");
-check("workflow: hourly schedule", /cron:\s*"\d+ \* \* \* \*"/.test(wf));
+check("workflow: every 6 hours", /cron:\s*"\d+ \*\/6 \* \* \*"/.test(wf));
 check("workflow: calls run-monitors", wf.includes("/api/cron/run-monitors"));
 check("workflow: sends the CRON_SECRET bearer", wf.includes("secrets.CRON_SECRET") && wf.includes('Authorization: Bearer $CRON_SECRET'));
-check("workflow: reads the URL from a repo variable", wf.includes("vars.PRELAUNCH_URL"));
+check("workflow: reads the URL from a repo variable or secret", wf.includes("vars.PRELAUNCH_URL || secrets.PRELAUNCH_URL"));
 
 // Scan functions launch a browser from files static tracing can't see.
 const nextConfig = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
