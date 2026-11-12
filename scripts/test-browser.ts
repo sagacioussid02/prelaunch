@@ -88,8 +88,29 @@ async function main() {
       const snap = await session.snapshot("desktop");
       check("A3 serverless snapshot ran", snap.status === 200 && !snap.navError, `status=${snap.status}`);
       check("A4 serverless screenshot saved", ctx.screenshots.some((s) => s.name === "desktop"));
+      // The desktop context is closed by now. With Chromium's --single-process
+      // flag, closing a context killed the whole browser, so on Vercel every
+      // later page failed with "Target page, context or browser has been closed".
+      const mobile = await session.snapshot("mobile").catch((e: unknown) => ({ navError: String(e), status: 0 }));
+      check("A4b serverless browser survives a closed context (next snapshot runs)", mobile.status === 200 && !mobile.navError, mobile.navError ?? "");
+      const visit = await session.visit(`${target}/ssrf`).catch((e: unknown) => ({ status: 0, error: String(e) }));
+      check("A4c serverless browser still opens pages after that", visit.status === 200, visit.error ?? "");
     }
     await closeSession(ctx);
+  }
+  {
+    // The production path end to end: a whole scan opens and closes several
+    // browser contexts. With Chromium's --single-process flag the browser died
+    // when the first context closed, and every live check failed with
+    // "Target page, context or browser has been closed".
+    const result = await runScan(target, "passive", "browser-test-serverless-scan");
+    const sims = (result.progress ?? []).filter((p) => p.id.startsWith("sim-"));
+    check(
+      "A5 serverless full scan: no browser check failed or was skipped",
+      sims.length > 0 && sims.every((p) => p.outcome === "passed" || p.outcome === "issues"),
+      JSON.stringify(sims.map((p) => [p.id, p.outcome, p.reason])),
+    );
+    check("A6 serverless full scan is not partial", result.partial === undefined, result.partial ?? "");
   }
   delete process.env.PRELAUNCH_BROWSER;
 

@@ -380,13 +380,19 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       deviceScaleFactor: 1,
       serviceWorkers: "block",
     });
+    // Close only the page; the context is left for browser.close() at the end
+    // of the scan. The serverless Chromium runs with --single-process (needed
+    // on Vercel's Lambda runtime), and there closing any browser context kills
+    // the whole browser, so every later check failed with "Target page,
+    // context or browser has been closed". An empty context costs little.
+    let page: Page | undefined;
     try {
       await guardContext(context, readOnly);
-      const page = await context.newPage();
+      page = await context.newPage();
       page.setDefaultTimeout(8000);
       return await fn(page);
     } finally {
-      await context.close().catch(() => {});
+      await page?.close().catch(() => {});
     }
   }
 
