@@ -29,6 +29,8 @@ export interface ScanContext {
   screenshots: Screenshot[];
   /** Lazily-created shared headless-browser session (see lib/checks/browser.ts) */
   session?: unknown;
+  /** Memoized launch-traffic measurement (see lib/surge/measure.ts) */
+  surge?: unknown;
 }
 
 export interface Screenshot {

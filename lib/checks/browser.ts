@@ -39,6 +39,32 @@ export interface FormInfo {
   fields: Array<{ tag: string; type: string; name: string; required: boolean; hasPattern: boolean }>;
 }
 
+/**
+ * One network response seen while loading a page, kept for the launch
+ * traffic forecast (lib/surge): what each page view transfers and how the
+ * CDN treats each resource. `bytes` is the encoded (on-the-wire) body size
+ * from the browser, falling back to content-length when unavailable.
+ */
+export interface ResponseRecord {
+  url: string;
+  status: number;
+  /** Playwright resource type: document, script, stylesheet, image, fetch, xhr, font, ... */
+  resourceType: string;
+  sameOrigin: boolean;
+  bytes: number;
+  contentType: string;
+  cacheControl: string;
+  /** Vercel's x-vercel-cache value (HIT, MISS, BYPASS, STALE, PRERENDER, REVALIDATED), "" when absent */
+  vercelCache: string;
+  /** Generic CDN cache status (cf-cache-status / cache-status / x-cache), "" when absent */
+  cdnCache: string;
+  age: string;
+  setsCookie: boolean;
+}
+
+/** Cap on stored response records per snapshot (keeps scan results small). */
+export const MAX_RESPONSE_RECORDS = 300;
+
 export interface PageSnapshot {
   viewport: ViewportName;
   status: number;
@@ -51,6 +77,8 @@ export interface PageSnapshot {
   insecureRequests: string[];
   requestCount: number;
   transferKB: number;
+  /** Per-response records for the traffic forecast (first MAX_RESPONSE_RECORDS) */
+  responses: ResponseRecord[];
   lcp: number | null;
   cls: number | null;
   scrollWidth: number;
@@ -84,6 +112,30 @@ export interface BrowserSession {
   visit(url: string): Promise<VisitResult>;
   withPage<T>(vp: ViewportName, readOnly: boolean, fn: (page: Page) => Promise<T>): Promise<T>;
   close(): Promise<void>;
+}
+
+/** Builds a ResponseRecord from lower-cased response headers. */
+export function responseRecord(
+  url: string,
+  status: number,
+  resourceType: string,
+  sameOrigin: boolean,
+  bytes: number,
+  h: Record<string, string>,
+): ResponseRecord {
+  return {
+    url: url.slice(0, 300),
+    status,
+    resourceType,
+    sameOrigin,
+    bytes,
+    contentType: (h["content-type"] ?? "").split(";")[0].trim(),
+    cacheControl: h["cache-control"] ?? "",
+    vercelCache: (h["x-vercel-cache"] ?? "").toUpperCase(),
+    cdnCache: h["cf-cache-status"] ?? h["cache-status"] ?? h["x-cache"] ?? "",
+    age: h["age"] ?? "",
+    setsCookie: "set-cookie" in h,
+  };
 }
 
 // Issue #7: browser visits carry the same privacy/opt-out pointer as the
@@ -407,9 +459,34 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
         requestCount++;
         if (ctx.target.startsWith("https:") && r.url().startsWith("http:")) insecureRequests.push(r.url());
       });
+      const origin = new URL(ctx.target).origin;
+      const responses: ResponseRecord[] = [];
+      // Sizes are only known once a request finishes; collect the pending
+      // lookups and settle them before the snapshot returns.
+      const sizeLookups: Array<Promise<void>> = [];
       page.on("response", (r) => {
-        bytes += Number(r.headers()["content-length"] ?? 0) || 0;
         if (r.status() >= 400) failedRequests.push({ url: r.url(), status: String(r.status()) });
+      });
+      page.on("requestfinished", (req) => {
+        sizeLookups.push(
+          (async () => {
+            const resp = await req.response().catch(() => null);
+            if (!resp) return;
+            const h = resp.headers();
+            const declared = Number(h["content-length"] ?? 0) || 0;
+            const sizes = await req.sizes().catch(() => null);
+            const size = sizes && sizes.responseBodySize > 0 ? sizes.responseBodySize : declared;
+            bytes += size;
+            if (responses.length >= MAX_RESPONSE_RECORDS) return;
+            let sameOrigin = false;
+            try {
+              sameOrigin = new URL(resp.url()).origin === origin;
+            } catch {
+              /* data: and friends */
+            }
+            responses.push(responseRecord(resp.url(), resp.status(), req.resourceType(), sameOrigin, size, h));
+          })().catch(() => {}),
+        );
       });
       page.on("requestfailed", (r) => {
         const why = r.failure()?.errorText ?? "failed";
@@ -431,6 +508,7 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       await page.waitForTimeout(400);
 
       const m = await page.evaluate(collectMetrics, VIEWPORTS[vp].mobile).catch(() => null);
+      await Promise.all(sizeLookups);
       if (!navError) {
         const shot = await page.screenshot({ type: "jpeg", quality: 72 }).catch(() => null);
         // A screenshot that can't be stored (e.g. no Blob store on a read-only
@@ -452,6 +530,7 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
         insecureRequests,
         requestCount,
         transferKB: Math.round(bytes / 1024),
+        responses,
         scrollWidth: m?.scrollWidth ?? 0,
         innerWidth: m?.innerWidth ?? 0,
         overflowX: m?.overflowX ?? false,
