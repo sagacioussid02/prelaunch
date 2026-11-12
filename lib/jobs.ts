@@ -15,7 +15,7 @@
  *   that), so the progress page always stops spinning.
  */
 
-import { initialProgress, runScan } from "./scanner.ts";
+import { runScan, scanProgress } from "./scanner.ts";
 import { getScan, saveScan } from "./store.ts";
 import type { ScanMode, ScanResult } from "./checks/types.ts";
 
@@ -47,7 +47,7 @@ export async function startScanJob(
     grade: "?",
     findings: [],
     checkTimings: {},
-    progress: initialProgress(mode),
+    progress: scanProgress(mode),
   };
   await saveScan(placeholder);
 

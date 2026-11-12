@@ -78,8 +78,13 @@ export async function checkScanTargetLimits(
   return { allowed: true };
 }
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
-const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Upstash's own names first; the Vercel Marketplace integration for Upstash
+// Redis adds the same REST endpoint as KV_REST_API_URL / KV_REST_API_TOKEN.
+const redisUrl = (
+  process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
+)?.replace(/\/$/, "");
+const redisToken =
+  process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 function redisConfigured(): boolean {
   return !!redisUrl && !!redisToken;

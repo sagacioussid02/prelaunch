@@ -56,9 +56,41 @@ export interface CheckProgress {
   /** What this check looks for, in plain language */
   description: string;
   status: "pending" | "running" | "done";
+  /**
+   * How a finished check ended: "passed" (ran, no findings), "issues" (ran,
+   * found something), "failed" (errored or timed out) or "not_run" (could
+   * not run, e.g. no browser, or owner scans only). Older stored results
+   * lack it; use checkOutcome().
+   */
+  outcome?: CheckOutcome;
+  /** Why a check failed or did not run, in plain language */
+  reason?: string;
   findingCount?: number;
   worst?: Severity;
   ms?: number;
+}
+
+export type CheckOutcome = "passed" | "issues" | "failed" | "not_run";
+
+/** Outcome of a progress entry, derived for results stored before `outcome` existed. */
+export function checkOutcome(p: CheckProgress): CheckOutcome | undefined {
+  if (p.status !== "done") return undefined;
+  return p.outcome ?? (p.findingCount ? "issues" : "passed");
+}
+
+/**
+ * Thrown by a check that could not run (e.g. the browser never started, or
+ * the page never loaded). The runner records it as "not_run" with this
+ * message as the reason instead of showing the check as clean. `findings`
+ * (if any) are still reported and graded.
+ */
+export class CheckNotRun extends Error {
+  readonly findings: Finding[];
+  constructor(reason: string, findings: Finding[] = []) {
+    super(reason);
+    this.name = "CheckNotRun";
+    this.findings = findings;
+  }
 }
 
 export interface CachedResponse {

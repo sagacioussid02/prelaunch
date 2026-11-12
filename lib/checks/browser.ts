@@ -433,8 +433,10 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       const m = await page.evaluate(collectMetrics, VIEWPORTS[vp].mobile).catch(() => null);
       if (!navError) {
         const shot = await page.screenshot({ type: "jpeg", quality: 72 }).catch(() => null);
-        if (shot) {
-          await saveShot(ctx.scanId, vp, shot);
+        // A screenshot that can't be stored (e.g. no Blob store on a read-only
+        // filesystem) is dropped; it must not fail the browser checks.
+        const saved = shot ? await saveShot(ctx.scanId, vp, shot).then(() => true, () => false) : false;
+        if (saved) {
           ctx.screenshots.push({ name: vp, label: VIEWPORTS[vp].label, width: VIEWPORTS[vp].width, height: VIEWPORTS[vp].height });
         }
       }

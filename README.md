@@ -121,6 +121,7 @@ node scripts/test-background-jobs.ts # scan deadline + stale expiry, 10-scan run
 node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Fluid on, hourly GitHub Actions trigger
 node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
 node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
+node scripts/test-check-outcomes.ts # each check shows passed / issues / failed / didn't run with the reason; partial scans aren't "ready to launch"
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 

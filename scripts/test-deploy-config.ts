@@ -47,6 +47,15 @@ check("workflow: calls run-monitors", wf.includes("/api/cron/run-monitors"));
 check("workflow: sends the CRON_SECRET bearer", wf.includes("secrets.CRON_SECRET") && wf.includes('Authorization: Bearer $CRON_SECRET'));
 check("workflow: reads the URL from a repo variable", wf.includes("vars.PRELAUNCH_URL"));
 
+// Scan functions launch a browser from files static tracing can't see.
+const nextConfig = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
+check("next.config: scan functions include the Chromium binary", nextConfig.includes("./node_modules/@sparticuz/chromium/bin/**"));
+check("next.config: scan functions include all of playwright-core (browsers.json etc.)", nextConfig.includes("./node_modules/playwright-core/**"));
+for (const route of ["/api/scan", "/api/monitor/*/deploy", "/api/cron/run-monitors"]) {
+  check(`next.config: tracing includes cover ${route}`, nextConfig.includes(`"${route}": BROWSER_FILES`));
+}
+check("next.config: no literal [id] glob in tracing keys (it matches nothing)", !/"\/api\/monitor\/\[id\]\/deploy":/.test(nextConfig));
+
 if (failures) {
   console.log(`${failures} FAILED (test-deploy-config)`);
   process.exit(1);
