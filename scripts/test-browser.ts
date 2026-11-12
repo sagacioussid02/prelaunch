@@ -132,6 +132,13 @@ async function main() {
     const html = renderReportBody(result, { baseUrl: "http://localhost:3000" });
     check("C4 report shows partial banner", html.includes("Partial result — browser checks unavailable"));
     check("C5 grade marked partial", html.includes("· partial"));
+    // Same partial result with every finding cleared: still no launch verdict.
+    const clean = renderReportBody({ ...result, findings: [] }, { baseUrl: "http://localhost:3000" });
+    check("C6 partial report with no blockers never says ready to launch", !clean.includes("Ready to launch"));
+    check("C7 partial report with no blockers says it's not a launch verdict", clean.includes("not a launch verdict yet"));
+    const { partial: _p, ...complete } = result;
+    const full = renderReportBody({ ...complete, findings: [] }, { baseUrl: "http://localhost:3000" });
+    check("C8 complete report with no blockers says ready to launch", full.includes("Ready to launch"));
   }
   delete process.env.PRELAUNCH_BROWSER;
 

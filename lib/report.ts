@@ -80,6 +80,7 @@ export const REPORT_CSS = `
 .pl-verdict{position:relative;margin:18px auto 0;max-width:520px;border-radius:12px;padding:12px 16px;font-weight:600;font-size:15px}
 .pl-verdict.ok{background:#0f2a1a;color:#86efac;border:1px solid #14532d}
 .pl-verdict.bad{background:#2d1414;color:#fca5a5;border:1px solid #7f1d1d}
+.pl-verdict.warn{background:#2a2410;color:#fcd34d;border:1px solid #713f12}
 .pl-partial{position:relative;margin:12px auto 0;max-width:520px;border-radius:12px;padding:12px 16px;
   font-size:14px;line-height:1.5;text-align:left;background:#2a2110;color:#fde68a;border:1px solid #92600a}
 .pl-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px;position:relative}
@@ -253,10 +254,14 @@ export function renderReportBody(
     })
     .join("");
 
+  // A partial scan never earns "Ready to launch": with the browser down, the
+  // live simulations (where load, layout and journey blockers come from) never ran.
   const verdict =
-    blockers.length === 0
-      ? `<div class="pl-verdict ok">Ready to launch 🚀 — no blockers found.</div>`
-      : `<div class="pl-verdict bad">${blockers.length} blocker${blockers.length > 1 ? "s" : ""} to fix before launch.</div>`;
+    blockers.length > 0
+      ? `<div class="pl-verdict bad">${blockers.length} blocker${blockers.length > 1 ? "s" : ""} to fix before launch.</div>`
+      : result.partial
+        ? `<div class="pl-verdict warn">No blockers in the HTTP checks, but the browser checks didn't run — not a launch verdict yet.</div>`
+        : `<div class="pl-verdict ok">Ready to launch 🚀 — no blockers found.</div>`;
 
   // Issue #5: a scan whose browser never started must say so at the top,
   // not bury it in an info finding — the grade below is partial.

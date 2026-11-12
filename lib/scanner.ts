@@ -4,7 +4,8 @@
  * Grading (from the MVP spec): 100-point scale, start at 100 and subtract
  * per finding — blocker −15, warning −5, info −1, floored at 0.
  * Bands: A+ 95+, A 90+, B 80+, C 70+, D 60+, F below.
- * A report with zero blockers earns the "Ready to launch" banner.
+ * A complete report with zero blockers earns the "Ready to launch" banner;
+ * a partial one (browser checks unavailable) never does.
  */
 
 import type { Check, CheckProgress, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
