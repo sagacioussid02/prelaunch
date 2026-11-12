@@ -204,6 +204,7 @@ export async function runScan(
     score,
     grade: gradeLetter,
     ...(partial ? { partial } : {}),
+    ...(ctx.forecast ? { forecast: ctx.forecast } : {}),
     findings,
     checkTimings,
     progress,

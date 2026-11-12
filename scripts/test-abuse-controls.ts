@@ -54,6 +54,7 @@ if (mode === "instance") {
   const fixture = process.env.TEST_FIXTURE_URL ?? "";
   const { NextRequest } = await import("next/server");
   const { POST } = await import("../app/api/scan/route.ts");
+  const { getScan } = await import("../lib/store.ts");
   const statuses: number[] = [];
   for (let i = 0; i < n; i++) {
     const res = await POST(
@@ -64,7 +65,14 @@ if (mode === "instance") {
       }),
     );
     statuses.push(res.status);
-    await sleep(1500); // let the in-process concurrency slot free up
+    // Let the scan finish so the in-process concurrency slot (cap 2) frees up;
+    // a scan takes several seconds (the launch forecast probes each page twice).
+    const id = res.status === 200 ? ((await res.json().catch(() => ({}))) as { id?: string }).id : undefined;
+    for (let t = 0; id && t < 600; t++) {
+      const s = await getScan(id);
+      if (s && s.status !== "running") break;
+      await sleep(100);
+    }
   }
   console.log(`STATUSES ${JSON.stringify(statuses)}`);
   process.exit(0);
@@ -184,7 +192,7 @@ try {
     }
     // Wait for the scan to finish so the per-instance concurrency cap (2) never interferes.
     if (id) {
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 600; i++) {
         const s = await getScan(id);
         if (s && s.status !== "running") break;
         await sleep(100);

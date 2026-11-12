@@ -72,6 +72,10 @@ export const CHECK_META: Record<string, CheckMeta> = {
     looksFor: "Generates user journeys from your page: visits key pages, fills forms with test data (never submits) and, in owner mode, clicks safe buttons.",
     why: "Catches pages that crash or forms that accept anything, the way real users will find them.",
   },
+  "surge-forecast": {
+    looksFor: "Fetches your home page and up to five linked pages twice, a few seconds apart, to see which come from the CDN cache, weighs a real page view, and projects launch traffic against Vercel's plan limits.",
+    why: "A launch spike can use up a free plan's monthly limits in a day, or turn uncached pages into a surprise bill.",
+  },
 };
 
 export function metaFor(id: string): CheckMeta {

@@ -13,6 +13,8 @@
  *   scanning and RLS smoke tests.
  */
 
+import type { SurgeForecast } from "../surge/model.ts";
+
 export type Severity = "blocker" | "warning" | "info";
 export type ScanMode = "passive" | "full";
 
@@ -31,6 +33,8 @@ export interface ScanContext {
   session?: unknown;
   /** Memoized launch-traffic measurement (see lib/surge/measure.ts) */
   surge?: unknown;
+  /** Launch traffic forecast, set by the surge-forecast check and copied to the result */
+  forecast?: SurgeForecast;
 }
 
 export interface Screenshot {
@@ -152,6 +156,8 @@ export interface ScanResult {
    * the result as partial — never as a complete grade.
    */
   partial?: string;
+  /** Launch traffic forecast (lib/surge/model.ts), when that check ran */
+  forecast?: SurgeForecast;
   /** Set when status is "failed" */
   error?: string;
 }
