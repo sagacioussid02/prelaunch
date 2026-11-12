@@ -8,7 +8,8 @@
  * a partial one (browser checks unavailable) never does.
  */
 
-import type { Check, CheckProgress, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
+import type { Check, CheckOutcome, CheckProgress, Finding, ScanContext, ScanMode, ScanResult } from "./checks/types.ts";
+import { CheckNotRun } from "./checks/types.ts";
 import { registry } from "./checks/index.ts";
 import { closeSession, getBrowserAvailability } from "./checks/browser.ts";
 import { metaFor } from "./checks/meta.ts";
@@ -47,10 +48,15 @@ export function normalizeUrl(input: string): string {
   return parsed.origin + (parsed.pathname === "/" ? "" : parsed.pathname);
 }
 
-async function runOne(
-  check: Check,
-  ctx: ScanContext,
-): Promise<{ findings: Finding[]; ms: number }> {
+export interface RunOutcome {
+  findings: Finding[];
+  ms: number;
+  outcome: CheckOutcome;
+  reason?: string;
+}
+
+/** Runs one check with its timeout and classifies how it ended (exported for tests). */
+export async function runOne(check: Check, ctx: ScanContext): Promise<RunOutcome> {
   const start = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -58,20 +64,32 @@ async function runOne(
       check.run(ctx),
       new Promise<Finding[]>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`check timeout: ${check.id}`)),
+          () => reject(new Error(`timed out after ${Math.round((check.timeoutMs ?? CHECK_TIMEOUT_MS) / 1000)}s`)),
           check.timeoutMs ?? CHECK_TIMEOUT_MS,
         );
       }),
-    ]).catch((err) => [
-      {
-        checkId: check.id,
-        severity: "info" as const,
-        title: `Check failed to complete: ${String((err as Error).message ?? err)}`,
-        location: ctx.target,
-        fix: "Re-run the scan; if it persists, the target may be blocking automated requests.",
-      },
     ]);
-    return { findings, ms: Date.now() - start };
+    return { findings, ms: Date.now() - start, outcome: findings.length ? "issues" : "passed" };
+  } catch (err) {
+    const ms = Date.now() - start;
+    if (err instanceof CheckNotRun) {
+      return { findings: err.findings, ms, outcome: "not_run", reason: err.message };
+    }
+    const reason = String((err as Error)?.message ?? err);
+    return {
+      findings: [
+        {
+          checkId: check.id,
+          severity: "info" as const,
+          title: `Check failed to complete: ${reason}`,
+          location: ctx.target,
+          fix: "Re-run the scan; if it persists, the target may be blocking automated requests.",
+        },
+      ],
+      ms,
+      outcome: "failed",
+      reason,
+    };
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -89,6 +107,31 @@ export function initialProgress(mode: ScanMode): CheckProgress[] {
     }));
 }
 
+/** Reason shown for checks that only run in site-owner ("full") scans. */
+export const OWNER_ONLY_REASON =
+  "Runs only in a site-owner scan (set up through a deploy hook), because it probes the site more deeply.";
+
+/**
+ * Progress list for a scan: every check that runs in `mode`, then the
+ * checks that don't, already marked "not_run" with the reason, so the
+ * report shows what was and wasn't tested.
+ */
+export function scanProgress(mode: ScanMode): CheckProgress[] {
+  const skipped: CheckProgress[] = registry
+    .filter((c) => !c.modes.includes(mode))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      description: metaFor(c.id).looksFor,
+      status: "done" as const,
+      outcome: "not_run" as const,
+      reason: OWNER_ONLY_REASON,
+      findingCount: 0,
+    }));
+  return [...initialProgress(mode), ...skipped];
+}
+
 export async function runScan(
   rawUrl: string,
   mode: ScanMode,
@@ -104,10 +147,11 @@ export async function runScan(
   const ctx: ScanContext = { target, mode, cache: new Map(), scanId: id, screenshots: [] };
 
   const eligible = registry.filter((c) => c.modes.includes(mode));
-  const progress = initialProgress(mode);
+  const progress = scanProgress(mode);
   onProgress?.(progress);
   const results = await Promise.all(
-    eligible.map(async (c, i) => {
+    eligible.map(async (c) => {
+      const i = progress.findIndex((p) => p.id === c.id);
       progress[i].status = "running";
       onProgress?.(progress);
       const r = await runOne(c, ctx);
@@ -115,6 +159,8 @@ export async function runScan(
       progress[i] = {
         ...progress[i],
         status: "done",
+        outcome: r.outcome,
+        ...(r.reason ? { reason: r.reason } : {}),
         ms: r.ms,
         findingCount: r.findings.length,
         worst: r.findings.sort((a, b) => rank[a.severity] - rank[b.severity])[0]?.severity,

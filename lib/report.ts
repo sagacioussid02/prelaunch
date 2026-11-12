@@ -5,7 +5,8 @@
  * `renderReport` wraps it in a standalone document for the CLI and tests.
  */
 
-import type { CheckProgress, Finding, ScanResult } from "./checks/types.ts";
+import type { CheckOutcome, CheckProgress, Finding, ScanResult } from "./checks/types.ts";
+import { checkOutcome } from "./checks/types.ts";
 import { metaFor } from "./checks/meta.ts";
 
 const GRADE_COLORS: Record<string, string> = {
@@ -114,6 +115,9 @@ export const REPORT_CSS = `
 .pl-check p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
 .pl-check details{margin-top:8px;font-size:13px;color:var(--muted)}
 .pl-check summary{cursor:pointer;color:#7cb7ff}
+.pl-check .pl-reason{color:#fca5a5}
+.pl-check.pl-not_run .pl-reason{color:#cbd5e1}
+.pl-check.pl-not_run{opacity:.85}
 .pl-cat{grid-column:1/-1;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 -4px}
 
 .pl-f{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:14px;padding:16px 18px;margin-bottom:12px}
@@ -139,19 +143,46 @@ export const REPORT_CSS = `
 @media (prefers-reduced-motion:reduce){.pl *,.pl *::before{animation:none!important;transition:none!important}}
 `;
 
+const OUTCOME_STYLE: Record<CheckOutcome | "pending", { color: string; icon: string; label: string }> = {
+  passed: { color: "#4ade80", icon: "✓", label: "Passed" },
+  issues: { color: "#fbbf24", icon: "!", label: "Found issues" },
+  failed: { color: "#f87171", icon: "✕", label: "Failed to run" },
+  not_run: { color: "#64748b", icon: "–", label: "Didn't run" },
+  pending: { color: "#334155", icon: "…", label: "Pending" },
+};
+
 function checkCard(p: CheckProgress, i: number): string {
   const meta = metaFor(p.id);
+  const outcome = checkOutcome(p) ?? "pending";
   const n = p.findingCount ?? 0;
-  const color = n === 0 ? "#4ade80" : SEVERITY_COLOR[p.worst ?? "info"];
-  const icon = n === 0 ? "✓" : String(n);
-  const label = n === 0 ? "Clean" : `${n} issue${n > 1 ? "s" : ""}`;
+  const style = OUTCOME_STYLE[outcome];
+  const color = outcome === "issues" ? SEVERITY_COLOR[p.worst ?? "info"] : style.color;
+  const icon = outcome === "issues" ? String(n) : style.icon;
+  const label = outcome === "issues" ? `${n} issue${n > 1 ? "s" : ""}` : style.label;
+  const reason = p.reason && (outcome === "failed" || outcome === "not_run")
+    ? `<p class="pl-reason"><b>${outcome === "failed" ? "Why it failed" : "Why it didn't run"}:</b> ${esc(p.reason)}</p>`
+    : "";
   return `
-  <div class="pl-check pl-tilt rise" style="--i:${i}">
+  <div class="pl-check pl-tilt rise pl-${outcome}" style="--i:${i}">
     <div class="pl-check-head"><span class="pl-ico" style="background:${color}">${icon}</span>
       <span>${esc(p.name)}</span><span class="count" style="margin-left:auto">${label}</span></div>
-    <p>${esc(meta.looksFor)}</p>
+    <p>${esc(meta.looksFor)}</p>${reason}
     <details><summary>Why it matters</summary><p>${esc(meta.why)}</p></details>
   </div>`;
+}
+
+/** "12 passed · 3 found issues · 1 failed · 5 didn't run" for the check list. */
+export function outcomeSummary(progress: CheckProgress[]): string {
+  const count = (o: CheckOutcome | "pending") =>
+    progress.filter((p) => (checkOutcome(p) ?? "pending") === o).length;
+  const parts = [
+    [count("passed"), "passed"],
+    [count("issues"), "found issues"],
+    [count("failed"), "failed"],
+    [count("not_run"), "didn't run"],
+    [count("pending"), "pending"],
+  ] as const;
+  return parts.filter(([n]) => n > 0).map(([n, l]) => `${n} ${l}`).join(" · ");
 }
 
 function findingCard(f: Finding, i: number): string {
@@ -245,6 +276,10 @@ export function renderReportBody(
     .join("\n");
 
   const progress = result.progress ?? [];
+  const ran = progress.filter((p) => {
+    const o = checkOutcome(p);
+    return o === "passed" || o === "issues";
+  }).length;
   let lastCat = "";
   const checks = progress
     .map((p, i) => {
@@ -294,7 +329,7 @@ export function renderReportBody(
       <div class="pl-chip"><b style="color:${SEVERITY_COLOR.blocker}">${blockers.length}</b>blockers</div>
       <div class="pl-chip"><b style="color:${SEVERITY_COLOR.warning}">${by("warning").length}</b>warnings</div>
       <div class="pl-chip"><b style="color:${SEVERITY_COLOR.info}">${by("info").length}</b>info</div>
-      <div class="pl-chip"><b>${progress.length}</b>checks run</div>
+      <div class="pl-chip"><b>${ran}</b>of ${progress.length} checks ran</div>
     </div>
   </div></div>
 
@@ -311,11 +346,15 @@ export function renderReportBody(
   ${devices(result, opts.baseUrl, opts.inlineShots)}
 
   ${progress.length ? `<h2>What we checked</h2>
-  <p class="sub">${progress.length} automated checks looked at your live site. Each card says what it looks for and why that matters.</p>
+  <p class="sub">${esc(outcomeSummary(progress))}. Each card says what it looks for, how it went and why that matters; a check that failed or didn&rsquo;t run says why.</p>
   <div class="pl-checks">${checks}</div>` : ""}
 
   <h2>Your findings</h2>
-  ${result.findings.length === 0 ? `<p class="pl-empty">No issues found. Ship it. 🚀</p>` : sections}
+  ${result.findings.length === 0
+    ? ran < progress.length || result.partial
+      ? `<p class="pl-empty">No issues found in the checks that ran.</p>`
+      : `<p class="pl-empty">No issues found. Ship it. 🚀</p>`
+    : sections}
 
   <div class="pl-actions"><a class="pl-btn" href="${esc(opts.baseUrl)}/">↻ Scan another site</a>${
     opts.downloads

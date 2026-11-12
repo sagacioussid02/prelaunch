@@ -129,6 +129,13 @@ async function main() {
       result.findings.some((f) => f.checkId === "sim-load" && f.severity === "warning" && f.title.startsWith("Browser checks unavailable")),
     );
     check("C3 no screenshots", (result.screenshots ?? []).length === 0);
+    const prog = (id: string) => (result.progress ?? []).find((x) => x.id === id);
+    check(
+      "C3a browser checks show as didn't run, with the reason",
+      ["sim-mobile", "sim-a11y", "sim-perf", "sim-journeys"].every((id) => prog(id)?.outcome === "not_run" && /browser couldn't start/.test(prog(id)?.reason ?? "")),
+      JSON.stringify((result.progress ?? []).filter((x) => x.id.startsWith("sim-")).map((x) => [x.id, x.outcome, x.reason])),
+    );
+    check("C3b sim-load is didn't run but keeps its graded warning", prog("sim-load")?.outcome === "not_run" && prog("sim-load")?.findingCount === 1);
     const html = renderReportBody(result, { baseUrl: "http://localhost:3000" });
     check("C4 report shows partial banner", html.includes("Partial result — browser checks unavailable"));
     check("C5 grade marked partial", html.includes("· partial"));

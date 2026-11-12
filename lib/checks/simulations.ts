@@ -12,7 +12,7 @@
  */
 
 import type { Check, Finding, ScanContext, Severity } from "./types.ts";
-import { cachedGet } from "./types.ts";
+import { CheckNotRun, cachedGet } from "./types.ts";
 import { getBrowserAvailability, getSession } from "./browser.ts";
 import type { FormInfo, PageSnapshot } from "./browser.ts";
 
@@ -52,9 +52,23 @@ const NO_BROWSER = (id: string, reason: string) =>
     "https://playwright.dev/docs/browsers",
   );
 
-async function noBrowserFinding(ctx: ScanContext, id: string): Promise<Finding[]> {
+async function noBrowserReason(ctx: ScanContext): Promise<string> {
   const avail = await getBrowserAvailability(ctx);
-  return [NO_BROWSER(id, avail.state === "unavailable" ? avail.reason : "browser session unavailable")];
+  return avail.state === "unavailable" ? avail.reason : "browser session unavailable";
+}
+
+/** The browser never started: sim-load reports it (graded warning); the rest just did not run. */
+async function noBrowser(ctx: ScanContext, id: string): Promise<never> {
+  const reason = await noBrowserReason(ctx);
+  throw new CheckNotRun(
+    `The browser couldn't start, so this check didn't run (${reason}).`,
+    id === "sim-load" ? [NO_BROWSER(id, reason)] : [],
+  );
+}
+
+/** The page never loaded in the browser (reported by sim-load), so this check had nothing to test. */
+function pageDidNotLoad(navError: string): never {
+  throw new CheckNotRun(`The page didn't load in the browser (${navError}), so there was nothing to test.`);
 }
 
 const simLoad: Check = {
@@ -66,7 +80,7 @@ const simLoad: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return noBrowserFinding(ctx, "sim-load");
+    if (!session) return noBrowser(ctx, "sim-load");
     const s = await session.snapshot("desktop");
     const out: Finding[] = [];
     if (s.navError) {
@@ -108,10 +122,10 @@ const simMobile: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return [];
+    if (!session) return noBrowser(ctx, "sim-mobile");
     const [mobile, tablet] = await Promise.all([session.snapshot("mobile"), session.snapshot("tablet")]);
     const out: Finding[] = [];
-    if (mobile.navError) return out;
+    if (mobile.navError) pageDidNotLoad(mobile.navError);
     if (!mobile.hasViewportMeta) {
       out.push(f("sim-mobile", "warning", "Missing <meta name=\"viewport\">", ctx.target, "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">."));
     }
@@ -141,9 +155,9 @@ const simA11y: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return [];
+    if (!session) return noBrowser(ctx, "sim-a11y");
     const s = await session.snapshot("desktop");
-    if (s.navError) return [];
+    if (s.navError) pageDidNotLoad(s.navError);
     const out: Finding[] = [];
     if (!s.htmlLang) out.push(f("sim-a11y", "warning", "<html> has no lang attribute", ctx.target, "Add lang=\"en\" (or your language) to the <html> tag."));
     if (s.imgNoAlt) out.push(f("sim-a11y", "warning", `${s.imgNoAlt} image${s.imgNoAlt > 1 ? "s" : ""} without alt text`, ctx.target, "Add alt text, or alt=\"\" for decorative images."));
@@ -164,9 +178,9 @@ const simPerf: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return [];
+    if (!session) return noBrowser(ctx, "sim-perf");
     const s = await session.snapshot("desktop");
-    if (s.navError) return [];
+    if (s.navError) pageDidNotLoad(s.navError);
     const out: Finding[] = [];
     const loc = `${ctx.target} (desktop)`;
     if (s.lcp != null && s.lcp > 4000) out.push(f("sim-perf", "warning", `Largest Contentful Paint is ${(s.lcp / 1000).toFixed(1)}s (target under 2.5s)`, loc, "Optimize the hero image/font, use next/image and preload critical assets.", "https://web.dev/articles/lcp"));
@@ -265,9 +279,9 @@ const simJourneys: Check = {
   timeoutMs: SIM_TIMEOUT,
   async run(ctx) {
     const session = await getSession(ctx);
-    if (!session) return [];
+    if (!session) return noBrowser(ctx, "sim-journeys");
     const s: PageSnapshot = await session.snapshot("desktop");
-    if (s.navError) return [];
+    if (s.navError) pageDidNotLoad(s.navError);
     const out: Finding[] = formFindings(s.forms, ctx);
 
     // Journey 1: visit the first few distinct pages the home page links to.
