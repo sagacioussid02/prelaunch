@@ -9,6 +9,9 @@ import type { CheckOutcome, CheckProgress, Finding, ScanResult } from "./checks/
 import { checkOutcome } from "./checks/types.ts";
 import { metaFor } from "./checks/meta.ts";
 
+/** Lowest score (grade C) that can be called ready to launch when nothing blocks it. */
+export const LAUNCH_READY_SCORE = 70;
+
 const GRADE_COLORS: Record<string, string> = {
   "A+": "#22c55e",
   A: "#4ade80",
@@ -291,12 +294,16 @@ export function renderReportBody(
 
   // A partial scan never earns "Ready to launch": with the browser down, the
   // live simulations (where load, layout and journey blockers come from) never ran.
+  // Nor does a D or F: "ready" next to a failing grade contradicts itself, even
+  // when the points come only from warnings.
   const verdict =
     blockers.length > 0
       ? `<div class="pl-verdict bad">${blockers.length} blocker${blockers.length > 1 ? "s" : ""} to fix before launch.</div>`
       : result.partial
         ? `<div class="pl-verdict warn">No blockers in the HTTP checks, but the browser checks didn't run — not a launch verdict yet.</div>`
-        : `<div class="pl-verdict ok">Ready to launch 🚀 — no blockers found.</div>`;
+        : result.score < LAUNCH_READY_SCORE
+          ? `<div class="pl-verdict warn">No blockers, but the warnings add up to a grade ${esc(result.grade)}. Work through the fixes below before launch.</div>`
+          : `<div class="pl-verdict ok">Ready to launch 🚀 — no blockers found.</div>`;
 
   // Issue #5: a scan whose browser never started must say so at the top,
   // not bury it in an info finding — the grade below is partial.
