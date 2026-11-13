@@ -20,7 +20,7 @@
  * by scripts/test-browser.ts to exercise the unavailable path).
  */
 
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, Page, Request } from "playwright";
 import type { BrowserAvailability, ScanContext } from "./types.ts";
 import { assertSafeHostname } from "../ssrf.ts";
 import { saveShot } from "../store.ts";
@@ -47,6 +47,7 @@ export interface FormInfo {
  */
 export interface ResponseRecord {
   url: string;
+  /** HTTP status; 0 for a same-origin request still open when the snapshot ended */
   status: number;
   /** Playwright resource type: document, script, stylesheet, image, fetch, xhr, font, ... */
   resourceType: string;
@@ -456,16 +457,25 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       const insecureRequests: string[] = [];
       let requestCount = 0;
       let bytes = 0;
+      const origin = new URL(ctx.target).origin;
       page.on("console", (m) => {
         const t = m.text();
         if (m.type() === "error" && !t.startsWith("Failed to load resource")) consoleErrors.push(t.slice(0, 200));
       });
       page.on("pageerror", (e) => pageErrors.push(String(e.message).slice(0, 200)));
+      // Same-origin requests still open when the snapshot ends (slow API
+      // calls, a busy connection pool): recorded with status 0 so the
+      // forecast still counts them as CDN requests.
+      const open = new Set<Request>();
       page.on("request", (r) => {
         requestCount++;
+        try {
+          if (new URL(r.url()).origin === origin) open.add(r);
+        } catch {
+          /* data: and friends */
+        }
         if (ctx.target.startsWith("https:") && r.url().startsWith("http:")) insecureRequests.push(r.url());
       });
-      const origin = new URL(ctx.target).origin;
       const responses: ResponseRecord[] = [];
       // Sizes are only known once a request finishes; collect the pending
       // lookups and settle them before the snapshot returns.
@@ -474,6 +484,7 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
         if (r.status() >= 400) failedRequests.push({ url: r.url(), status: String(r.status()) });
       });
       page.on("requestfinished", (req) => {
+        open.delete(req);
         sizeLookups.push(
           (async () => {
             const resp = await req.response().catch(() => null);
@@ -495,6 +506,7 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
         );
       });
       page.on("requestfailed", (r) => {
+        open.delete(r);
         const why = r.failure()?.errorText ?? "failed";
         if (!/ERR_ABORTED|BLOCKED_BY_CLIENT/.test(why)) failedRequests.push({ url: r.url(), status: why });
       });
@@ -515,6 +527,10 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
 
       const m = await page.evaluate(collectMetrics, VIEWPORTS[vp].mobile).catch(() => null);
       await Promise.all(sizeLookups);
+      for (const r of open) {
+        if (responses.length >= MAX_RESPONSE_RECORDS) break;
+        responses.push(responseRecord(r.url(), 0, r.resourceType(), true, 0, {}));
+      }
       if (!navError) {
         const shot = await page.screenshot({ type: "jpeg", quality: 72 }).catch(() => null);
         // A screenshot that can't be stored (e.g. no Blob store on a read-only

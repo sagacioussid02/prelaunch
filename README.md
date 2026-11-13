@@ -17,6 +17,9 @@ lib/checks/errors.ts   error-verboseness probes (passive-safe)
 lib/checks/simulations.ts  live Chromium simulations: load, mobile/tablet, a11y, perf, links, generated journeys
 lib/checks/browser.ts  shared Playwright session (SSRF-guarded, read-only journeys)
 lib/surge/measure.ts   launch traffic forecast, step 1: CDN/host detection and per-route cache inspection (≤2 sequential GETs per route)
+lib/surge/pricing.ts   launch traffic forecast: Vercel Hobby limits and Pro rates as data, with source and as-of date
+lib/surge/model.ts     launch traffic forecast: per-visitor cost, usage at V visitors, capacity and Pro cost (pure)
+lib/checks/surge.ts    surge-forecast check: grades the forecast at 10,000 visitors on Hobby
 lib/checks/meta.ts     plain-language "what it looks for / why it matters" copy
 lib/monitor.ts         deploy monitoring: baseline diff, new-blocker alerts
 lib/jobs.ts            background scan job with live per-check progress
@@ -47,6 +50,34 @@ Google Chrome; skipped with an info finding if neither exists). Pages are
 rendered at desktop/tablet/phone sizes, journeys are generated from the page's
 real links and forms. Forms are filled but never submitted, non-GET requests
 are blocked, and button clicking only runs in `full` mode.
+
+## Launch traffic forecast
+
+The `surge-forecast` check answers "what does launch day do to this site?".
+It fetches the home page and up to five linked pages twice, one request at a
+time and 2 s apart (never `/api`, auth, logout and the like), reads how the
+CDN served each, and weighs a real page view from the desktop browser
+snapshot. From that it works out what one visitor costs the host (CDN
+requests, transfer, function runs, Active CPU, origin transfer, image
+transformations) and projects it onto Vercel's plans (`lib/surge/pricing.ts`,
+read 2026-11-12).
+
+Grading always uses 10,000 visitors viewing 2 pages each, on Hobby, so scans
+and monitor diffs stay comparable:
+
+- **blocker**: a Hobby limit runs out at that size (Vercel sites only; Hobby
+  can't buy more, so Vercel would limit the site for the rest of the month)
+- **warning**: a limit passes 50%; a page skips the CDN because it sets or
+  varies on cookies, or BYPASS; 3+ static files revalidate on every view;
+  one page uses half the image transformations
+- **info**: other uncached pages, cold starts, a partial forecast (no
+  browser), and limit findings for sites not on Vercel
+
+The whole forecast (per-visitor inputs, the Hobby projection and the same
+launch on Pro) is stored as `forecast` on the scan result. It is an estimate
+from a sample of pages: Active CPU per function run is assumed (50 ms), and
+ISR, middleware and bot traffic aren't modelled. Pro costs use Vercel's
+"starting at" rates after the $20 usage credit, so they are a floor.
 
 ## Deploy monitoring
 
@@ -125,6 +156,7 @@ node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Flui
 node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
 node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
 node scripts/test-surge-measure.ts  # launch traffic forecast M1: cache verdicts, ≤2 sequential GETs/route, unsafe links skipped, SSRF, real page weight
+node scripts/test-surge-forecast.ts # launch traffic forecast M2: pricing data, model maths, severities, full scan stores the forecast
 node scripts/test-check-outcomes.ts # each check shows passed / issues / failed / didn't run with the reason; partial scans aren't "ready to launch"
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
