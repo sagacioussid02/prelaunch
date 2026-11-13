@@ -13,7 +13,7 @@
 
 import type { Check, Finding, ScanContext, Severity } from "./types.ts";
 import { CheckNotRun, cachedGet } from "./types.ts";
-import { getBrowserAvailability, getSession } from "./browser.ts";
+import { BLANK_TEXT_MIN, getBrowserAvailability, getSession } from "./browser.ts";
 import type { FormInfo, PageSnapshot } from "./browser.ts";
 
 const CATEGORY = "Live browser simulation";
@@ -87,7 +87,7 @@ const simLoad: Check = {
       return [f("sim-load", "blocker", "The page failed to load in a real browser", ctx.target, `Browser reported: ${s.navError}`)];
     }
     if (s.status >= 400) out.push(f("sim-load", "blocker", `Home page returned HTTP ${s.status}`, ctx.target, "Make sure the production URL serves your app with a 200."));
-    if (s.status < 400 && s.textLength < 20) {
+    if (s.status < 400 && s.textLength < BLANK_TEXT_MIN) {
       out.push(f("sim-load", "blocker", "Page renders blank (no visible text)", ctx.target, "Open the site in an incognito window; check hydration errors in the console."));
     }
     if (s.pageErrors.length) {
@@ -291,7 +291,7 @@ const simJourneys: Check = {
       if (!v) continue;
       if (v.error) out.push(f("sim-journeys", "warning", "Linked page failed to load in a browser", short(v.url), v.error));
       else if (v.status >= 400) out.push(f("sim-journeys", "warning", `Linked page returned HTTP ${v.status}`, short(v.url), "Fix the route or remove the link."));
-      else if (v.textLength < 20) out.push(f("sim-journeys", "warning", "Linked page renders blank", short(v.url), "Check the page for runtime errors."));
+      else if (v.textLength < BLANK_TEXT_MIN) out.push(f("sim-journeys", "warning", "Linked page renders blank", short(v.url), "Check the page for runtime errors."));
       if (v.pageErrors.length) out.push(f("sim-journeys", "warning", "Linked page throws a JavaScript error", `${short(v.url)}: ${v.pageErrors[0]}`, "Fix the exception on this route."));
     }
 

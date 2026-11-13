@@ -22,7 +22,7 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { existsSync } from "node:fs";
 import { runScan } from "../lib/scanner.ts";
 import { renderReportBody } from "../lib/report.ts";
-import { closeSession, getBrowserAvailability, getSession } from "../lib/checks/browser.ts";
+import { BLANK_TEXT_MIN, closeSession, getBrowserAvailability, getSession } from "../lib/checks/browser.ts";
 import type { ScanContext } from "../lib/checks/types.ts";
 
 // Fixture binds 127.0.0.1; loopback is permitted for self-tests only
@@ -41,7 +41,35 @@ function handler(req: IncomingMessage, res: ServerResponse) {
     res.end(PIXEL);
     return;
   }
+  if (url === "/api/session" && req.method === "POST") {
+    // Stands in for an auth widget's client API (Clerk does a POST on load).
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ greeting: "Sign in to continue to the fixture app" }));
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/html" });
+  if (url === "/late") {
+    // Client-rendered: nothing to read at "load", text appears a moment later.
+    res.end(
+      `<html><head><title>late</title></head><body><div id="app"></div><script>` +
+        `setTimeout(() => { document.getElementById("app").textContent = "Rendered on the client after load, like most SPAs"; }, 800);` +
+        `</script></body></html>`,
+    );
+    return;
+  }
+  if (url === "/needs-post") {
+    // Renders only after a POST made on load, like a hosted sign-in page.
+    res.end(
+      `<html><head><title>sign in</title></head><body><div id="app"></div><script>` +
+        `fetch("/api/session", { method: "POST" }).then((r) => r.json()).then((d) => { document.getElementById("app").textContent = d.greeting; });` +
+        `</script></body></html>`,
+    );
+    return;
+  }
+  if (url === "/blank") {
+    res.end(`<html><head><title>blank</title></head><body><div id="app"></div></body></html>`);
+    return;
+  }
   if (url === "/ssrf") {
     // No lang attribute etc. is irrelevant here; the point is the two imgs.
     res.end(
@@ -95,6 +123,13 @@ async function main() {
       check("A4b serverless browser survives a closed context (next snapshot runs)", mobile.status === 200 && !mobile.navError, mobile.navError ?? "");
       const visit = await session.visit(`${target}/ssrf`).catch((e: unknown) => ({ status: 0, error: String(e) }));
       check("A4c serverless browser still opens pages after that", visit.status === 200, visit.error ?? "");
+      // Linked pages are judged blank only once they have had time to render.
+      const late = await session.visit(`${target}/late`);
+      check("A4d a page that renders after load is not read as blank", late.textLength >= BLANK_TEXT_MIN, `textLength=${late.textLength}`);
+      const post = await session.visit(`${target}/needs-post`);
+      check("A4e a page that needs a POST on load to render is not read as blank", post.textLength >= BLANK_TEXT_MIN, `textLength=${post.textLength}`);
+      const blank = await session.visit(`${target}/blank`);
+      check("A4f a page that never renders is still read as blank", blank.textLength < BLANK_TEXT_MIN, `textLength=${blank.textLength}`);
     }
     await closeSession(ctx);
   }
@@ -165,8 +200,13 @@ async function main() {
     check("C6 partial report with no blockers never says ready to launch", !clean.includes("Ready to launch"));
     check("C7 partial report with no blockers says it's not a launch verdict", clean.includes("not a launch verdict yet"));
     const { partial: _p, ...complete } = result;
-    const full = renderReportBody({ ...complete, findings: [] }, { baseUrl: "http://localhost:3000" });
+    // Clearing the findings also clears their points: a clean scan scores 100.
+    const full = renderReportBody({ ...complete, findings: [], score: 100, grade: "A+" }, { baseUrl: "http://localhost:3000" });
     check("C8 complete report with no blockers says ready to launch", full.includes("Ready to launch"));
+    // No blockers but a failing grade: "Ready to launch" next to an F contradicts itself.
+    const failing = renderReportBody({ ...complete, findings: [], score: 54, grade: "F" }, { baseUrl: "http://localhost:3000" });
+    check("C9 report with no blockers but a grade F never says ready to launch", !failing.includes("Ready to launch"));
+    check("C10 report with no blockers but a grade F names the grade", failing.includes("add up to a grade F"));
   }
   delete process.env.PRELAUNCH_BROWSER;
 

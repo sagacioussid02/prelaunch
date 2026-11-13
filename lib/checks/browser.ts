@@ -66,6 +66,9 @@ export interface ResponseRecord {
 /** Cap on stored response records per snapshot (keeps scan results small). */
 export const MAX_RESPONSE_RECORDS = 300;
 
+/** Fewer visible characters than this and a page counts as blank. */
+export const BLANK_TEXT_MIN = 20;
+
 export interface PageSnapshot {
   viewport: ViewportName;
   status: number;
@@ -585,7 +588,11 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
     },
     withPage,
     visit(url) {
-      return withPage("desktop", true, async (page) => {
+      // Loaded like the home-page snapshot, not read-only: a plain visit clicks
+      // and fills nothing, and many pages (Clerk/Auth0 sign-in, apps that call
+      // their API by POST on load) render nothing if their load-time POSTs are
+      // blocked, which used to be reported as "renders blank".
+      return withPage("desktop", false, async (page) => {
         const pageErrors: string[] = [];
         page.on("pageerror", (e) => pageErrors.push(String(e.message).slice(0, 200)));
         const t0 = Date.now();
@@ -597,7 +604,17 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
         } catch (err) {
           error = String((err as Error).message ?? err).split("\n")[0];
         }
-        const textLength = await page.evaluate(() => (document.body?.innerText ?? "").trim().length).catch(() => 0);
+        const bodyText = () => (document.body?.innerText ?? "").trim().length;
+        if (!error) {
+          // "load" fires before client-rendered pages fill in, so give the page
+          // the same settle time as the snapshot, then a little longer if it is
+          // still empty, before measuring.
+          await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
+          await page
+            .waitForFunction((min) => (document.body?.innerText ?? "").trim().length >= min, BLANK_TEXT_MIN, { timeout: 3000 })
+            .catch(() => {});
+        }
+        const textLength = await page.evaluate(bodyText).catch(() => 0);
         return { url, status, loadMs: Date.now() - t0, error, pageErrors, textLength };
       });
     },
