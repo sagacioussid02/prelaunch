@@ -26,7 +26,11 @@ export type ScanRequestOutcome =
   | "rate_limited_host"
   | "rate_limited_global"
   | "busy"
-  | "invalid";
+  | "invalid"
+  // CI scans (POST /api/ci/scan)
+  | "unauthorized"
+  | "payment_required"
+  | "rate_limited_ci";
 
 export interface ScanRequestLog {
   at: string;

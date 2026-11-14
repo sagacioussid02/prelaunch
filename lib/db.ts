@@ -1,8 +1,8 @@
 /**
  * Production persistence for scans, monitors, the waitlist, monitor
  * notifications and billing subscriptions (issue #3, Phase 0 steps
- * 1, 3, 4 and 6) and the scan request log (issue #6, Phase 1;
- * lib/scanlog.ts).
+ * 1, 3, 4 and 6), the scan request log (issue #6, Phase 1;
+ * lib/scanlog.ts) and GitHub Action keys (lib/cikeys.ts).
  *
  * Ported from the local prototype's lib/db.ts. When DATABASE_URL is set
  * (Neon Postgres at deploy), Postgres is the authoritative store for scans
@@ -98,6 +98,15 @@ async function ensureSchema(): Promise<void> {
         CREATE INDEX IF NOT EXISTS scan_requests_at_idx ON scan_requests (at);
         CREATE INDEX IF NOT EXISTS scan_requests_ip_hash_idx ON scan_requests (ip_hash, at);
         CREATE INDEX IF NOT EXISTS scan_requests_host_idx ON scan_requests (host, at);
+        CREATE TABLE IF NOT EXISTS ci_keys (
+          id TEXT PRIMARY KEY,
+          key_hash TEXT NOT NULL UNIQUE,
+          email TEXT NOT NULL,
+          label TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          revoked_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS ci_keys_email_idx ON ci_keys (email);
       `);
     })();
   }
