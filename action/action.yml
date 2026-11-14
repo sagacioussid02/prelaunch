@@ -1,0 +1,54 @@
+name: Prelaunch Check
+description: Scan a pull request's preview deployment for launch problems (exposed secrets, missing security headers, SEO, errors) before merge.
+author: sagacioussid02
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  url:
+    description: URL to scan. Leave empty on a deployment_status event to scan the deployment's URL (e.g. a Vercel preview).
+    required: false
+    default: ""
+  api-key:
+    description: Prelaunch key (store it as a secret). Required for private repositories. Public repositories can use GitHub OIDC instead (permissions id-token write).
+    required: false
+    default: ""
+  fail-on:
+    description: Fail the check on "blocker" (default), "warning" (blockers or warnings) or "never".
+    required: false
+    default: blocker
+  comment:
+    description: Post or update one summary comment on the pull request ("true" or "false").
+    required: false
+    default: "true"
+  github-token:
+    description: Token used to find the pull request and write the comment.
+    required: false
+    default: ${{ github.token }}
+  timeout-minutes:
+    description: How long to wait for the scan to finish.
+    required: false
+    default: "6"
+  prelaunch-url:
+    description: Prelaunch server to use.
+    required: false
+    default: https://prelaunch-check.vercel.app
+
+outputs:
+  grade:
+    description: Letter grade, e.g. "B".
+  score:
+    description: Score out of 100.
+  blockers:
+    description: Number of blocker findings.
+  warnings:
+    description: Number of warning findings.
+  report-url:
+    description: Link to the full report.
+  scan-id:
+    description: Prelaunch scan id.
+
+runs:
+  using: node24
+  main: index.mjs

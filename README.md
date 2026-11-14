@@ -23,6 +23,10 @@ lib/checks/surge.ts    surge-forecast check: grades the forecast at 10,000 visit
 lib/checks/meta.ts     plain-language "what it looks for / why it matters" copy
 lib/monitor.ts         deploy monitoring: baseline diff, new-blocker alerts
 lib/jobs.ts            background scan job with live per-check progress
+lib/cikeys.ts          Prelaunch keys for the GitHub Action (hashed, tied to an email)
+lib/github-oidc.ts     GitHub Actions OIDC token verification (free tier for public repos)
+lib/ciauth.ts          CI scan auth: key → paid, public-repo OIDC → free, limits
+action/                the GitHub Action (action.yml, index.mjs, lib.mjs)
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
@@ -138,6 +142,30 @@ and falls back to the `PRO_EMAILS` list for manual grants. With no
 Stripe keys set, billing is off (checkout/portal 503) and nothing
 changes for Free users.
 
+## GitHub Action
+
+`action/` is a GitHub Action that scans a PR's preview deployment and
+comments the result on the PR (usage: [action/README.md](action/README.md)).
+It calls `POST /api/ci/scan`, then polls the same `GET /api/scan/{id}` and
+`GET /api/report/{id}?format=json` endpoints the website uses.
+
+- **Free tier, public repositories:** the Action sends a GitHub Actions
+  OIDC token (audience `prelaunch`). `lib/github-oidc.ts` verifies it
+  against GitHub's published keys and reads `repository_visibility`, which
+  the workflow can't forge. Private or internal → 402.
+- **Paid tier, any repository:** `Authorization: Bearer plk_…`. Keys
+  (`lib/cikeys.ts`) are stored as SHA-256 hashes and belong to an email;
+  the key scans only while that email resolves to Pro through billing, so
+  a lapsed subscription turns it off without revoking it. Issue, list and
+  revoke them with `node scripts/ci-key.ts issue <email> [label]`
+  (`DATABASE_URL` set to write to production).
+- **Limits (`lib/ciauth.ts`, `app/api/ci/scan/route.ts`):** 20 CI scans an
+  hour per public repository, 60 per key (`PRELAUNCH_CI_SCANS_PER_HOUR_FREE`
+  / `_PAID`), keyed on the credential instead of the IP because hosted
+  runners share IPs. The per-host and global caps and the SSRF guard apply
+  to CI scans unchanged, and `/api/scan` keeps its own limits. CI scans are
+  passive on both tiers.
+
 ## Run the tests
 
 ```bash
@@ -158,6 +186,8 @@ node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps
 node scripts/test-surge-measure.ts  # launch traffic forecast M1: cache verdicts, ≤2 sequential GETs/route, unsafe links skipped, SSRF, real page weight
 node scripts/test-surge-forecast.ts # launch traffic forecast M2: pricing data, model maths, severities, full scan stores the forecast
 node scripts/test-check-outcomes.ts # each check shows passed / issues / failed / didn't run with the reason; partial scans aren't "ready to launch"
+node scripts/test-ci-auth.ts     # GitHub Action server side: keys, OIDC verification, tiers, /api/ci/scan limits
+node scripts/test-ci-action.ts   # GitHub Action: target/summary helpers, full runs against stub Prelaunch + GitHub APIs
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 
