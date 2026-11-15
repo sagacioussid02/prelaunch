@@ -1,0 +1,91 @@
+# OpenAPI spec for the RapidAPI listing (RapidAPI Studio can import it).
+# Base URL: set `servers` to the production Prelaunch URL before importing.
+openapi: 3.0.3
+info:
+  title: Prelaunch Launch Check
+  version: 1.0.0
+  description: >
+    Check a website for three launch-blocking mistakes in one call: exposed
+    .env files, public sourcemaps that ship your original source, and missing
+    security headers or plain-HTTP serving. Read-only; nothing is stored.
+servers:
+  - url: https://PRODUCTION-PRELAUNCH-URL
+paths:
+  /api/v1/check:
+    post:
+      summary: Check a URL before it ships
+      operationId: checkUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  description: Public website to check. https:// is assumed when no scheme is given.
+                  example: https://example.com
+      responses:
+        "200":
+          description: Check finished
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Result" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: >
+        400 missing, invalid or non-public URL; 422 the site did not respond;
+        429 rate limited (see Retry-After); 401/503 not called through RapidAPI.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+              status: { type: integer }
+  schemas:
+    Result:
+      type: object
+      properties:
+        url: { type: string, description: Normalized target }
+        grade: { type: string, enum: ["A+", "A", "B", "C", "D", "F"] }
+        score: { type: integer, minimum: 0, maximum: 100, description: "100 minus 15 per blocker, 5 per warning, 1 per info" }
+        ready: { type: boolean, description: No blockers and every check ran }
+        summary:
+          type: object
+          properties:
+            blockers: { type: integer }
+            warnings: { type: integer }
+            info: { type: integer }
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, enum: [exposed-env, sourcemap-leak, security-headers] }
+              name: { type: string }
+              outcome: { type: string, enum: [passed, issues, failed, not_run] }
+              findings: { type: integer }
+              reason: { type: string }
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              checkId: { type: string }
+              severity: { type: string, enum: [blocker, warning, info] }
+              title: { type: string }
+              location: { type: string }
+              fix: { type: string }
+              fixLink: { type: string }
+        checkedAt: { type: string, format: date-time }
+        durationMs: { type: integer }

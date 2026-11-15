@@ -30,7 +30,11 @@ export type ScanRequestOutcome =
   // CI scans (POST /api/ci/scan)
   | "unauthorized"
   | "payment_required"
-  | "rate_limited_ci";
+  | "rate_limited_ci"
+  // Pay-per-call API (POST /api/v1/check, via RapidAPI)
+  | "rate_limited_api"
+  | "unreachable"
+  | "error";
 
 export interface ScanRequestLog {
   at: string;
