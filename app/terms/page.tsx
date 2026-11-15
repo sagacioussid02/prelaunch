@@ -6,9 +6,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Terms page (issue #7). The abuse contact below is a PLACEHOLDER: the
- * operator must replace <your-domain> with a real, monitored mailbox
- * before public launch.
+ * Terms page (issue #7). The abuse contact below is the operator's
+ * monitored mailbox (set 2026-11-14 for the public launch).
  */
 export default function TermsPage() {
   return (
@@ -56,8 +55,7 @@ export default function TermsPage() {
       <h2 className="section-title">Abuse contact</h2>
       <p className="muted">
         Reports of abuse, and opt-out requests from site owners:{" "}
-        {/* OPERATOR: replace this placeholder with a monitored mailbox before launch. */}
-        <code>abuse@&lt;your-domain&gt;</code>
+        <code>siddharthuncc@gmail.com</code>
       </p>
 
       <footer
