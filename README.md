@@ -27,6 +27,9 @@ lib/cikeys.ts          Prelaunch keys for the GitHub Action (hashed, tied to an 
 lib/github-oidc.ts     GitHub Actions OIDC token verification (free tier for public repos)
 lib/ciauth.ts          CI scan auth: key → paid, public-repo OIDC → free, limits
 action/                the GitHub Action (action.yml, index.mjs, lib.mjs)
+lib/quickcheck.ts      the 3-check quick launch check behind the pay-per-call API
+lib/rapidapi.ts        RapidAPI gateway secret check + per-plan safety limits
+docs/                  RapidAPI listing draft and OpenAPI spec for POST /api/v1/check
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
@@ -166,6 +169,27 @@ It calls `POST /api/ci/scan`, then polls the same `GET /api/scan/{id}` and
   to CI scans unchanged, and `/api/scan` keeps its own limits. CI scans are
   passive on both tiers.
 
+## Pay-per-call API (RapidAPI)
+
+`POST /api/v1/check { "url": "https://example.com" }` runs three passive
+checks inline and answers with a grade, a `ready` flag and the findings,
+usually in a few seconds: exposed `.env` files, public sourcemaps with
+original source, and missing security headers / plain-HTTP serving
+(`lib/quickcheck.ts`). Same runner, timeouts, SSRF guard and grading as a
+report; nothing is stored. It's meant to be sold through RapidAPI
+(listing draft: [docs/rapidapi-listing.md](docs/rapidapi-listing.md),
+spec: [docs/rapidapi-openapi.yaml](docs/rapidapi-openapi.yaml)).
+
+- **Auth:** the `X-RapidAPI-Proxy-Secret` header RapidAPI adds must equal
+  `RAPIDAPI_PROXY_SECRET`. Unset → every call is 503 (fail closed), so the
+  endpoint is off until that env var is set.
+- **Limits:** RapidAPI enforces each plan's quota; ours are a safety net.
+  Per RapidAPI user per hour by `X-RapidAPI-Subscription` (BASIC 20, PRO
+  120, ULTRA 400, MEGA/CUSTOM 1000), the shared 10/hour per-target-host cap
+  (same counter as `/api/scan`), and a global API cap
+  (`PRELAUNCH_API_CALLS_PER_HOUR`, default 1000) kept apart from the
+  website's. Usernames are hashed in limiter keys and never logged.
+
 ## Run the tests
 
 ```bash
@@ -187,6 +211,7 @@ node scripts/test-surge-measure.ts  # launch traffic forecast M1: cache verdicts
 node scripts/test-surge-forecast.ts # launch traffic forecast M2: pricing data, model maths, severities, full scan stores the forecast
 node scripts/test-check-outcomes.ts # each check shows passed / issues / failed / didn't run with the reason; partial scans aren't "ready to launch"
 node scripts/test-ci-auth.ts     # GitHub Action server side: keys, OIDC verification, tiers, /api/ci/scan limits
+node scripts/test-api-check.ts   # pay-per-call API: gateway secret, 3 checks on leaky/clean fixtures, SSRF, per-user/host/global limits
 node scripts/test-ci-action.ts   # GitHub Action: target/summary helpers, full runs against stub Prelaunch + GitHub APIs
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
