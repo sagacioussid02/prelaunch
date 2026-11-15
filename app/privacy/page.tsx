@@ -6,9 +6,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Privacy page (issue #7). The abuse/opt-out address below is a PLACEHOLDER:
- * the operator must replace <your-domain> with a real, monitored mailbox
- * before public launch.
+ * Privacy page (issue #7). The abuse/opt-out address below is the
+ * operator's monitored mailbox (set 2026-11-14 for the public launch).
  */
 export default function PrivacyPage() {
   return (
@@ -94,8 +93,7 @@ export default function PrivacyPage() {
       <p className="muted">
         If you operate a site and want PreLaunch Check to stop scanning it, or you believe a scan
         was abusive, contact us and we will block the domain and remove stored reports for it:{" "}
-        {/* OPERATOR: replace this placeholder with a monitored mailbox before launch. */}
-        <code>abuse@&lt;your-domain&gt;</code>
+        <code>siddharthuncc@gmail.com</code>
       </p>
 
       <footer
