@@ -1,0 +1,8 @@
+# Docker build context for the Apify Actor (.actor/Dockerfile).
+# Only lib/, apify/ and .actor/ are needed; keep everything else out.
+*
+!lib/
+!apify/package.json
+!apify/package-lock.json
+!apify/src/
+!.actor/

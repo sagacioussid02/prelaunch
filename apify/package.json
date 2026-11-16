@@ -1,0 +1,27 @@
+{
+  "name": "prelaunch-apify-actor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prelaunch launch-readiness scan as an Apify Actor (pay per scan)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/main.js",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node ../scripts/test-apify-actor.ts"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.9.0",
+    "apify": "^3.7.2",
+    "pg": "^8.23.1",
+    "playwright": "1.65.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
