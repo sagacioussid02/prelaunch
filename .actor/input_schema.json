@@ -1,0 +1,40 @@
+{
+  "title": "Prelaunch launch-readiness scan",
+  "description": "Give one or more public website URLs. Each finished scan is charged once; URLs that are invalid, private or don't answer are reported and not charged.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "urls": {
+      "title": "Website URLs",
+      "type": "array",
+      "description": "Public sites to scan, for example https://your-app.vercel.app. Up to 100 per run. Duplicates are scanned once.",
+      "editor": "stringList",
+      "prefill": ["https://example.com"]
+    },
+    "scanType": {
+      "title": "Scan type",
+      "type": "string",
+      "description": "Quick: exposed .env files, public source maps and security headers, in seconds. Full: every check in an anonymous Prelaunch scan, including headless-browser load, mobile, accessibility, performance, link and journey checks, SEO basics and a launch-traffic forecast.",
+      "editor": "select",
+      "enum": ["quick", "full"],
+      "enumTitles": ["Quick (3 launch-blocker checks, seconds)", "Full (all passive checks with a real browser, usually under a minute)"],
+      "default": "quick"
+    },
+    "includeScreenshots": {
+      "title": "Save screenshots (full scan)",
+      "type": "boolean",
+      "description": "Full scans only: store desktop, tablet and mobile screenshots in the run's key-value store and link them from each result.",
+      "editor": "checkbox",
+      "default": true
+    },
+    "maxConcurrency": {
+      "title": "Max parallel scans",
+      "type": "integer",
+      "description": "How many sites to scan at once. Quick: up to 10 (default 5). Full: up to 2 (default 1), because each full scan drives a browser.",
+      "editor": "number",
+      "minimum": 1,
+      "maximum": 10
+    }
+  },
+  "required": ["urls"]
+}

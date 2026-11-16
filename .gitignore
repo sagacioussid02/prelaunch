@@ -20,3 +20,8 @@ hidden/
 
 # misc
 .DS_Store
+
+# Apify Actor build output and local run storage
+apify/dist/
+apify/storage/
+storage/

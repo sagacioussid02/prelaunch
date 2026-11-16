@@ -29,7 +29,9 @@ lib/ciauth.ts          CI scan auth: key → paid, public-repo OIDC → free, li
 action/                the GitHub Action (action.yml, index.mjs, lib.mjs)
 lib/quickcheck.ts      the 3-check quick launch check behind the pay-per-call API
 lib/rapidapi.ts        RapidAPI gateway secret check + per-plan safety limits
-docs/                  RapidAPI listing draft and OpenAPI spec for POST /api/v1/check
+docs/                  RapidAPI and Apify Store listing drafts, OpenAPI spec for POST /api/v1/check
+.actor/                Apify Actor definition, input/dataset schemas, Dockerfile, Store README
+apify/                 Apify Actor entry (pay per scan): input, billing loop, quick + full scans
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
@@ -190,6 +192,17 @@ spec: [docs/rapidapi-openapi.yaml](docs/rapidapi-openapi.yaml)).
   (`PRELAUNCH_API_CALLS_PER_HOUR`, default 1000) kept apart from the
   website's. Usernames are hashed in limiter keys and never logged.
 
+## Apify Store Actor (pay per scan)
+
+The same scans as an [Apify](https://apify.com) Actor that charges per
+finished scan (pay per event): `quick` runs the three quick-check tests,
+`full` runs every anonymous check, including the browser simulations and
+screenshots. Up to 100 URLs per run; invalid, private or unreachable URLs
+get an error item and aren't charged; scans stop at the run's spending
+limit. Definition in `.actor/`, code in `apify/` (it bundles `lib/` with
+esbuild into the Playwright image). Proposed prices and publishing steps:
+[docs/apify-listing.md](docs/apify-listing.md).
+
 ## Run the tests
 
 ```bash
@@ -213,6 +226,7 @@ node scripts/test-check-outcomes.ts # each check shows passed / issues / failed 
 node scripts/test-ci-auth.ts     # GitHub Action server side: keys, OIDC verification, tiers, /api/ci/scan limits
 node scripts/test-api-check.ts   # pay-per-call API: gateway secret, 3 checks on leaky/clean fixtures, SSRF, per-user/host/global limits
 node scripts/test-ci-action.ts   # GitHub Action: target/summary helpers, full runs against stub Prelaunch + GitHub APIs
+node scripts/test-apify-actor.ts # Apify Actor: input, per-scan billing + spending limit, quick/full scans, schemas (end-to-end once apify/ is built)
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 

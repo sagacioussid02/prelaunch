@@ -1,0 +1,46 @@
+{
+  "actorSpecification": 1,
+  "fields": {},
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "transformation": {
+        "fields": ["url", "status", "ready", "grade", "score", "blockers", "warnings", "info", "scanType", "error", "checkedAt"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "url": { "label": "Site", "format": "link" },
+          "status": { "label": "Status", "format": "text" },
+          "ready": { "label": "Launch-ready", "format": "boolean" },
+          "grade": { "label": "Grade", "format": "text" },
+          "score": { "label": "Score", "format": "number" },
+          "blockers": { "label": "Blockers", "format": "number" },
+          "warnings": { "label": "Warnings", "format": "number" },
+          "info": { "label": "Info", "format": "number" },
+          "scanType": { "label": "Scan", "format": "text" },
+          "error": { "label": "Error", "format": "text" },
+          "checkedAt": { "label": "Checked", "format": "date" }
+        }
+      }
+    },
+    "findings": {
+      "title": "Findings",
+      "transformation": {
+        "fields": ["url", "findings"],
+        "unwind": ["findings"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "url": { "label": "Site", "format": "link" },
+          "severity": { "label": "Severity", "format": "text" },
+          "title": { "label": "Finding", "format": "text" },
+          "location": { "label": "Where", "format": "text" },
+          "fix": { "label": "Fix", "format": "text" },
+          "fixLink": { "label": "Docs", "format": "link" }
+        }
+      }
+    }
+  }
+}
