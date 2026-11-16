@@ -2,7 +2,7 @@
 
 The Actor lives in `.actor/` (definition, input and dataset schemas, Dockerfile, Store README) and `apify/` (entry code and its own `package.json`). It bundles the same `lib/` scan code the website, the GitHub Action and the RapidAPI endpoint use, so findings read the same everywhere.
 
-Nothing here is live. Pricing, the Apify account and publishing are all still to do.
+Prices are approved (2026-11-16). Nothing is live yet: the Apify account, setting the prices in Console and publishing are still to do.
 
 ## What it sells
 
@@ -13,7 +13,7 @@ Nothing here is live. Pricing, the Apify account and publishing are all still to
 
 Both refuse private, local and unresolvable hosts (`lib/ssrf.ts`), and both report an invalid or unreachable URL as an error item without charging for it.
 
-## Proposed pricing (pay per event)
+## Pricing (pay per event, approved 2026-11-16)
 
 | Event name | Title | Price | Per 1,000 |
 | --- | --- | --- | --- |
@@ -41,7 +41,7 @@ Why these numbers:
 
 ## Publishing steps (Sidd)
 
-1. Merge the PR.
+1. ~~Merge the PR.~~ Done (PR #43).
 2. Create or sign in to an Apify account, and set up payouts in Console if you haven't.
 3. In Apify Console, create a new Actor from this GitHub repository on the `main` branch. Apify reads `.actor/` at the repo root, and the Docker build context is the repo root.
 4. Build it, then run it on one of your own sites with both scan types and check the results and the run cost.
