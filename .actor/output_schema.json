@@ -1,0 +1,25 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Prelaunch scan results",
+  "description": "One result per scanned site, a run summary, and screenshots from full scans.",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Scan results",
+      "description": "One item per URL: grade, score, launch-ready flag, blocker/warning/info counts, per-check outcomes and every finding with its fix. URLs that couldn't be scanned have status \"error\".",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    },
+    "summary": {
+      "type": "string",
+      "title": "Run summary",
+      "description": "How many sites were scanned, launch-ready, not ready, errored, or skipped at the spending limit.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    },
+    "files": {
+      "type": "string",
+      "title": "Screenshots and files",
+      "description": "Desktop, tablet and mobile screenshots saved by full scans.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/keys"
+    }
+  }
+}

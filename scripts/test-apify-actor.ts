@@ -249,6 +249,15 @@ for (const key of ["dockerfile", "readme", "input"]) {
   check(`actor.json: ${key} file exists`, existsSync(join(actorDir, actor[key])));
 }
 check("actor.json: dataset schema exists", existsSync(join(actorDir, actor.storages.dataset)));
+check("actor.json: output schema exists (required to publish)", typeof actor.output === "string" && existsSync(join(actorDir, actor.output)));
+const outSchema = JSON.parse(readFileSync(join(actorDir, actor.output), "utf8"));
+const outProps = Object.values(outSchema.properties as Record<string, { title?: string; template?: string }>);
+check("output schema: v1 with title and at least one output",
+  outSchema.actorOutputSchemaVersion === 1 && !!outSchema.title && outProps.length > 0);
+check("output schema: every output has a title and a storage template",
+  outProps.every((p) => p.title && /^\{\{links\.apiDefault(Dataset|KeyValueStore)Url\}\}\//.test(p.template ?? "")));
+check("output schema: results point at the default dataset",
+  outSchema.properties.results?.template === "{{links.apiDefaultDatasetUrl}}/items");
 const schema = JSON.parse(readFileSync(join(actorDir, actor.input), "utf8"));
 check("input schema: v1 object with title", schema.schemaVersion === 1 && schema.type === "object" && !!schema.title);
 check("input schema: every field has type, title, description",
