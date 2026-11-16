@@ -446,6 +446,19 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       await guardContext(context, readOnly);
       page = await context.newPage();
       page.setDefaultTimeout(8000);
+      // esbuild (tsx, and any esbuild-bundled runtime) wraps nested
+      // functions with a `__name(fn, name)` helper when transpiling, and
+      // Playwright runs in-page functions from their transpiled source — so
+      // without the helper defined in the page, every page.evaluate /
+      // waitForFunction / addInitScript that uses a nested function throws
+      // "ReferenceError: __name is not defined" and the check silently
+      // degrades (snapshot metrics all zero, no links, no form fills).
+      // Define esbuild's own helper before any page script runs. It is a
+      // plain string, so no transpiler touches it, and it is harmless under
+      // SWC/Next.js, where the helper is never referenced.
+      await page.addInitScript(
+        "window.__name=(fn,name)=>{try{Object.defineProperty(fn,'name',{value:name,configurable:true})}catch(e){}return fn};",
+      );
       return await fn(page);
     } finally {
       await page?.close().catch(() => {});
@@ -528,7 +541,12 @@ function createSession(browser: Browser, ctx: ScanContext): BrowserSession {
       await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
       await page.waitForTimeout(400);
 
-      const m = await page.evaluate(collectMetrics, VIEWPORTS[vp].mobile).catch(() => null);
+      // A failed metrics collection used to fail silently (all metrics
+      // defaulting to zero), which hid the __name failure above for days.
+      const m = await page.evaluate(collectMetrics, VIEWPORTS[vp].mobile).catch((err) => {
+        console.warn("browser snapshot: collectMetrics failed, metrics defaulted", err);
+        return null;
+      });
       await Promise.all(sizeLookups);
       for (const r of open) {
         if (responses.length >= MAX_RESPONSE_RECORDS) break;
