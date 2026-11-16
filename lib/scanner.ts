@@ -40,7 +40,10 @@ export function grade(findings: Finding[]): { score: number; grade: string } {
 
 export function normalizeUrl(input: string): string {
   let url = input.trim();
-  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+  // Only add https:// when the input has no scheme at all. Prepending it
+  // to "ftp://example.com" would silently rewrite the target to the
+  // unresolvable host "ftp" instead of rejecting the scheme below.
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) url = "https://" + url;
   const parsed = new URL(url);
   if (!["http:", "https:"].includes(parsed.protocol)) {
     throw new Error("Only http(s) URLs are supported");
