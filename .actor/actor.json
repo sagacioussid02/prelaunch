@@ -1,6 +1,6 @@
 {
   "actorSpecification": 1,
-  "name": "prelaunch-launch-check",
+  "name": "prelaunchapi",
   "title": "Prelaunch: Launch-Readiness Scan",
   "description": "Scan any public website for launch blockers before you ship: exposed .env files, public source maps, missing security headers, broken pages, mobile and accessibility issues, and a launch-traffic forecast. One price per scan.",
   "version": "0.1",
@@ -8,6 +8,7 @@
   "dockerfile": "./Dockerfile",
   "readme": "./README.md",
   "input": "./input_schema.json",
+  "output": "./output_schema.json",
   "storages": {
     "dataset": "./dataset_schema.json"
   },
