@@ -94,7 +94,7 @@ Run it synchronously and fail the build when a site isn't ready:
 
 ```bash
 curl -s -X POST \
-  "https://api.apify.com/v2/acts/<username>~prelaunchapi/run-sync-get-dataset-items?token=$APIFY_TOKEN" \
+  "https://api.apify.com/v2/acts/whispery_artemisia~prelaunchapi/run-sync-get-dataset-items?token=$APIFY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"urls":["https://your-app.vercel.app"]}' \
   | jq -e 'all(.[]; .ready)'

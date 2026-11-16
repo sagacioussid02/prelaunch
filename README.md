@@ -194,6 +194,7 @@ spec: [docs/rapidapi-openapi.yaml](docs/rapidapi-openapi.yaml)).
 
 ## Apify Store Actor (pay per scan)
 
+Live on the Apify Store: [whispery_artemisia/prelaunchapi](https://apify.com/whispery_artemisia/prelaunchapi).
 The same scans as an [Apify](https://apify.com) Actor that charges per
 finished scan (pay per event): `quick` runs the three quick-check tests,
 `full` runs every anonymous check, including the browser simulations and

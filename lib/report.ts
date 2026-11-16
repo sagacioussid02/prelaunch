@@ -8,6 +8,7 @@
 import type { CheckOutcome, CheckProgress, Finding, ScanResult } from "./checks/types.ts";
 import { checkOutcome } from "./checks/types.ts";
 import { metaFor } from "./checks/meta.ts";
+import { APIFY_STORE_URL } from "./links.ts";
 
 /** Lowest score (grade C) that can be called ready to launch when nothing blocks it. */
 export const LAUNCH_READY_SCORE = 70;
@@ -143,6 +144,7 @@ export const REPORT_CSS = `
 .pl-btn{display:inline-block;padding:12px 24px;border-radius:12px;font-weight:700;text-decoration:none;background:#e8edf2;color:#0b0f14!important}
 .pl-cta{margin-top:40px;background:linear-gradient(160deg,#142033,#0d141d);border:1px solid var(--line);border-radius:20px;padding:26px;text-align:center}
 .pl-meta{margin-top:32px;font-size:12px;color:#5f7186;text-align:center}
+.pl-meta a{color:#8fa1b5}
 @media (prefers-reduced-motion:reduce){.pl *,.pl *::before{animation:none!important;transition:none!important}}
 `;
 
@@ -372,6 +374,7 @@ export function renderReportBody(
 
   <div class="pl-meta">
     Scanned ${esc(result.url)} · ${esc(date)} · ${result.durationMs ?? "?"}ms · mode: ${esc(result.mode)} · PreLaunch Check prototype
+    <br>Scanning many sites at once? Run these checks on the <a href="${APIFY_STORE_URL}">Apify Store</a>, paid per scan.
   </div>
 </div>`;
 }

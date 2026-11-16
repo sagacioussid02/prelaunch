@@ -2,7 +2,7 @@
 
 The Actor lives in `.actor/` (definition, input and dataset schemas, Dockerfile, Store README) and `apify/` (entry code and its own `package.json`). It bundles the same `lib/` scan code the website, the GitHub Action and the RapidAPI endpoint use, so findings read the same everywhere.
 
-Prices are approved (2026-11-16). Nothing is live yet: the Apify account, setting the prices in Console and publishing are still to do.
+Prices are approved (2026-11-16). Published on the Store as https://apify.com/whispery_artemisia/prelaunchapi.
 
 ## What it sells
 
@@ -46,7 +46,7 @@ Why these numbers:
 3. In Apify Console, create a new Actor from this GitHub repository on the `main` branch. Apify reads `.actor/` at the repo root, and the Docker build context is the repo root.
 4. Build it, then run it on one of your own sites with both scan types and check the results and the run cost.
 5. Under Publication, set pay-per-event pricing as above, then publish to the Store. The Store page uses `.actor/README.md`.
-6. Optional: add the Apify link to the main README and the Prelaunch site.
+6. ~~Add the Apify link to the main README, the Action README, the Prelaunch site and the report.~~ Done.
 
 ## Running it locally
 
