@@ -1,3 +1,4 @@
+import { APIFY_STORE_URL } from "@/lib/links";
 import { initialProgress } from "@/lib/scanner";
 import ScanForm from "./components/ScanForm";
 import WaitlistForm from "./components/WaitlistForm";
@@ -29,6 +30,11 @@ export default function Home() {
         ))}
       </div>
 
+      <p className="muted" style={{ marginTop: 24 }}>
+        Scanning lots of sites, or calling it from an AI agent? The same checks run on the{" "}
+        <a href={APIFY_STORE_URL}>Apify Store</a>, paid per scan.
+      </p>
+
       <WaitlistForm />
 
       <footer
@@ -38,6 +44,8 @@ export default function Home() {
         <a href="/terms">Terms</a>
         {" · "}
         <a href="/privacy">Privacy</a>
+        {" · "}
+        <a href={APIFY_STORE_URL}>Apify Store</a>
         {" · "}Site owners: our scanner identifies itself as{" "}
         <code>PreLaunchCheck/0.1</code> — see Privacy for what it does and how to opt out.
       </footer>
