@@ -201,7 +201,7 @@ finished scan (pay per event): `quick` runs the three quick-check tests,
 screenshots. Up to 100 URLs per run; invalid, private or unreachable URLs
 get an error item and aren't charged; scans stop at the run's spending
 limit. Definition in `.actor/`, code in `apify/` (it bundles `lib/` with
-esbuild into the Playwright image). Prices ($0.02 per quick scan, $0.08 per full scan) and publishing steps:
+esbuild into the Playwright image). Prices ($0.03 per quick scan, $0.09 per full scan) and publishing steps:
 [docs/apify-listing.md](docs/apify-listing.md).
 
 ## Run the tests

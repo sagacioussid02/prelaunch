@@ -29,8 +29,8 @@ You pay per finished scan, nothing else:
 
 | Event | Price |
 | --- | --- |
-| `quick-scan` | $0.02 per site |
-| `full-scan` | $0.08 per site |
+| `quick-scan` | $0.03 per site |
+| `full-scan` | $0.09 per site |
 
 URLs that are invalid, private or don't respond are reported in the results and **not charged**. Set a maximum cost on the run and the Actor stops starting new scans once the next one wouldn't fit.
 

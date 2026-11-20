@@ -324,8 +324,8 @@ if (!existsSync(dist) || !existsSync(join(root, "apify", "node_modules", "apify"
     pricingModel: "PAY_PER_EVENT",
     pricingPerEvent: {
       actorChargeEvents: {
-        "quick-scan": { eventPriceUsd: 0.02, eventTitle: "Quick scan" },
-        "full-scan": { eventPriceUsd: 0.1, eventTitle: "Full scan" },
+        "quick-scan": { eventPriceUsd: 0.03, eventTitle: "Quick scan" },
+        "full-scan": { eventPriceUsd: 0.09, eventTitle: "Full scan" },
       },
     },
   });
