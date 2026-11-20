@@ -9,7 +9,7 @@
  * Usage: node scripts/test-scan.ts
  */
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { runScan } from "../lib/scanner.ts";
 import { renderReport } from "../lib/report.ts";
 
@@ -96,7 +96,10 @@ async function main() {
     console.log("PASS: all expected signature checks fired");
   }
 
-  // Save a sample report for visual inspection.
+  // Save a sample report for visual inspection. hidden/ is gitignored and
+  // absent in a fresh clone, so create it first (a bare writeFileSync
+  // throws ENOENT and fails the suite after the scan itself passed).
+  mkdirSync(new URL("../hidden/", import.meta.url), { recursive: true });
   writeFileSync(
     new URL("../hidden/sample-report.html", import.meta.url),
     renderReport(result, { baseUrl: "http://localhost:3000" }),
