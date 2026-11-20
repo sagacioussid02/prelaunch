@@ -2,7 +2,7 @@
 
 The Actor lives in `.actor/` (definition, input and dataset schemas, Dockerfile, Store README) and `apify/` (entry code and its own `package.json`). It bundles the same `lib/` scan code the website, the GitHub Action and the RapidAPI endpoint use, so findings read the same everywhere.
 
-Prices are approved (2026-11-16). Published on the Store as https://apify.com/whispery_artemisia/prelaunchapi.
+Prices: $0.03 per quick scan and $0.09 per full scan, as set in Apify Console and confirmed by Sidd on 2026-11-20 (the $0.02 and $0.08 approved on 2026-11-16 were never live). Published on the Store as https://apify.com/whispery_artemisia/prelaunchapi.
 
 ## What it sells
 
@@ -13,12 +13,12 @@ Prices are approved (2026-11-16). Published on the Store as https://apify.com/wh
 
 Both refuse private, local and unresolvable hosts (`lib/ssrf.ts`), and both report an invalid or unreachable URL as an error item without charging for it.
 
-## Pricing (pay per event, approved 2026-11-16)
+## Pricing (pay per event, confirmed 2026-11-20)
 
 | Event name | Title | Price | Per 1,000 |
 | --- | --- | --- | --- |
-| `quick-scan` (primary) | Quick scan | $0.02 | $20 |
-| `full-scan` | Full scan | $0.08 | $80 |
+| `quick-scan` (primary) | Quick scan | $0.03 | $30 |
+| `full-scan` | Full scan | $0.09 | $90 |
 
 Also in the Console's "Actor pricing" step:
 
@@ -29,8 +29,8 @@ Also in the Console's "Actor pricing" step:
 Why these numbers:
 
 - **Revenue share:** Apify pays 80% of event revenue; profit = 0.8 × revenue − platform usage. Free-plan users' usage is covered by Apify.
-- **Quick:** $0.02 leaves $0.016 per scan before compute. The RapidAPI endpoint runs the same three checks at $9 for 1,000 calls ($0.01 overage), and Apify's Store users also pay for a hosted run, batch input and storage, so twice the RapidAPI overage is a fair middle.
-- **Full:** a real browser, 13 checks, screenshots and the traffic forecast. $0.08 leaves $0.064 before compute, which stays comfortably positive even for a 60-second run at 2 GB.
+- **Quick:** $0.03 leaves $0.024 per scan before compute. The RapidAPI endpoint runs the same three checks at $9 for 1,000 calls ($0.01 overage); Apify Store users also get a hosted run, batch input and storage.
+- **Full:** a real browser, 13 checks, screenshots and the traffic forecast. $0.09 leaves $0.072 before compute, which stays comfortably positive even for a 60-second run at 2 GB.
 - **Compute is the unknown.** Platform cost per scan depends on the memory the user picks (default 2 GB) and how slow the target site is. After the first test runs on Apify, check each run's usage cost in Console against these prices before publishing.
 
 ## Code-side billing rules (already built)

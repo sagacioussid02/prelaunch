@@ -71,7 +71,7 @@ jobs:
 
 The same checks are on the Apify Store as
 [Prelaunch](https://apify.com/whispery_artemisia/prelaunchapi), paid per scan
-($0.02 quick, $0.08 full). It takes up to 100 URLs a run and works from any
+($0.03 quick, $0.09 full). It takes up to 100 URLs a run and works from any
 CI, a cron job or an AI agent through Apify's API and MCP server, with no
 GitHub repository needed.
 
