@@ -73,6 +73,7 @@ function run(prelaunchUrl: string, status: string, redirect = "", body = "{}") {
     cwd: dir,
     encoding: "utf8",
     env: {
+      ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
       CRON_SECRET: SECRET,
       PRELAUNCH_URL: prelaunchUrl,
