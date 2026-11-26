@@ -114,8 +114,11 @@ fallback) and `/api/cron/retention` once a day (04:30 UTC). The GitHub
 Actions workflow `.github/workflows/run-monitors.yml` adds a run every 6
 hours (00:17, 06:17, 12:17, 18:17 UTC). It needs the repo secret
 `CRON_SECRET` (same value as on Vercel) and `PRELAUNCH_URL` (the production
-URL, as a repo variable or secret); until both are set it skips with a
-warning. Monitors with a shorter cadence (Pro's hourly) therefore run at most
+URL, as a repo variable or secret). `PRELAUNCH_URL` lives only in GitHub:
+the app never reads it, so the Vercel project doesn't need it. Until both
+are set the workflow skips with a warning. Give `PRELAUNCH_URL` the final `https://` address: an `http://` or
+scheme-less value is upgraded to `https://` with a warning, and a redirect
+fails the run and names where it points rather than being followed. Monitors with a shorter cadence (Pro's hourly) therefore run at most
 every 6 hours. The endpoint only starts monitors that are due, so the
 two triggers never double-run one; a monitor may run up to 30% of its
 interval (at most 45 minutes) early, so a trigger that fires a little
@@ -219,6 +222,7 @@ node scripts/test-billing.ts     # billing: status matrix, event routing, store,
 node scripts/test-billing-routes.ts # billing routes: checkout/portal/webhook via a stubbed Stripe
 node scripts/test-background-jobs.ts # scan deadline + stale expiry, 10-scan run, monitor running flag always clears
 node scripts/test-deploy-config.ts   # vercel.json crons are daily (Hobby), Fluid on, 6-hourly GitHub Actions trigger
+node scripts/test-monitor-trigger.ts # 6-hourly trigger: https only, http/scheme-less upgraded, redirects fail naming the host, secret never logged
 node scripts/test-retention.ts      # 30-day scan retention keeps monitor history; cron auth (add PRELAUNCH_TEST_DATABASE_URL for the Postgres cases)
 node scripts/test-abuse-controls.ts # cross-instance 429, per-host + global caps, manual-run 401, hashed-IP request log
 node scripts/test-surge-measure.ts  # launch traffic forecast M1: cache verdicts, ≤2 sequential GETs/route, unsafe links skipped, SSRF, real page weight
