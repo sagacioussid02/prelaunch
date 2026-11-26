@@ -114,8 +114,9 @@ fallback) and `/api/cron/retention` once a day (04:30 UTC). The GitHub
 Actions workflow `.github/workflows/run-monitors.yml` adds a run every 6
 hours (00:17, 06:17, 12:17, 18:17 UTC). It needs the repo secret
 `CRON_SECRET` (same value as on Vercel) and `PRELAUNCH_URL` (the production
-URL, as a repo variable or secret); until both are set it skips with a
-warning. Give `PRELAUNCH_URL` the final `https://` address: an `http://` or
+URL, as a repo variable or secret). `PRELAUNCH_URL` lives only in GitHub:
+the app never reads it, so the Vercel project doesn't need it. Until both
+are set the workflow skips with a warning. Give `PRELAUNCH_URL` the final `https://` address: an `http://` or
 scheme-less value is upgraded to `https://` with a warning, and a redirect
 fails the run and names where it points rather than being followed. Monitors with a shorter cadence (Pro's hourly) therefore run at most
 every 6 hours. The endpoint only starts monitors that are due, so the

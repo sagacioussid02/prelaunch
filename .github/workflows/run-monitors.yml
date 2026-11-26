@@ -8,7 +8,8 @@
 # Needs, in the repository's Settings > Secrets and variables > Actions:
 #   - secret   CRON_SECRET    same value as CRON_SECRET on the Vercel project
 #   - variable PRELAUNCH_URL  the production URL, e.g. https://prelaunch.example.com
-#                             (a secret of that name works too)
+#                             (a secret of that name works too). GitHub only:
+#                             the app never reads it, so Vercel doesn't need it.
 # Until both are set, each run logs a warning and does nothing.
 #
 # PRELAUNCH_URL must be the final https:// address. An http:// or scheme-less
