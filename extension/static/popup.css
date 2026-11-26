@@ -1,0 +1,79 @@
+:root {
+  --bg: #ffffff;
+  --fg: #111827;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --panel: #f9fafb;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --blocker: #b91c1c;
+  --warning: #b45309;
+  --info: #2563eb;
+  --pass: #15803d;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111318;
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --line: #2a2e37;
+    --panel: #181b22;
+    --accent: #818cf8;
+    --accent-fg: #0b0c10;
+    --blocker: #f87171;
+    --warning: #fbbf24;
+    --info: #60a5fa;
+    --pass: #4ade80;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 380px;
+  max-height: 580px;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+header, footer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
+header { border-bottom: 1px solid var(--line); }
+footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; justify-content: space-between; }
+.site { margin-left: auto; color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+main { padding: 14px; overflow-y: auto; max-height: 470px; }
+p { margin: 0 0 10px; }
+.muted { color: var(--muted); }
+button {
+  font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); padding: 7px 12px;
+}
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; width: 100%; padding: 9px 12px; }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; font-size: inherit; }
+button:disabled { opacity: 0.6; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.grade { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.letter { font-size: 30px; font-weight: 700; width: 56px; height: 56px; border-radius: 12px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.chip { border-radius: 999px; padding: 1px 8px; font-size: 12px; border: 1px solid var(--line); }
+.chip.blocker { color: var(--blocker); } .chip.warning { color: var(--warning); } .chip.info { color: var(--info); }
+.verdict { font-weight: 600; }
+.verdict.ready { color: var(--pass); } .verdict.notready { color: var(--blocker); }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 6px; }
+ul { list-style: none; margin: 0; padding: 0; }
+.checks li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.checks li:last-child { border-bottom: 0; }
+.outcome { white-space: nowrap; }
+.outcome.passed { color: var(--pass); } .outcome.issues { color: var(--warning); } .outcome.blocker { color: var(--blocker); }
+.outcome.failed, .outcome.not_run, .outcome.locked { color: var(--muted); }
+.finding { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--panel); }
+.finding .sev { font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.finding .sev.blocker { color: var(--blocker); } .finding .sev.warning { color: var(--warning); } .finding .sev.info { color: var(--info); }
+.finding .title { font-weight: 600; margin: 2px 0; }
+.finding code { font-size: 11px; word-break: break-all; color: var(--muted); }
+.finding .fix { margin-top: 4px; }
+.finding a { color: var(--accent); }
+.locked-panel { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px; margin-top: 14px; }
+.locked-panel strong { display: block; margin-bottom: 4px; }
+.error { color: var(--blocker); }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; display: inline-block; animation: spin 0.8s linear infinite; vertical-align: -3px; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }

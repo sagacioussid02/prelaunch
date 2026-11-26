@@ -25,3 +25,7 @@ hidden/
 apify/dist/
 apify/storage/
 storage/
+
+# Chrome extension build output and store packages
+extension/dist/
+extension/*.zip

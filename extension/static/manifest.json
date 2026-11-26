@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Prelaunch: launch-readiness check",
+  "short_name": "Prelaunch",
+  "version": "0.1.0",
+  "description": "Check the site in your open tab before you launch: exposed .env files, source maps, security headers, SEO basics.",
+  "homepage_url": "https://prelaunch-check.vercel.app",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Prelaunch: check this site",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["activeTab", "storage"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"]
+}

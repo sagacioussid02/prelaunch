@@ -1,0 +1,26 @@
+{
+  "name": "prelaunch-chrome-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prelaunch for Chrome: a launch-readiness check for the open tab, with a paid full report (ExtensionPay)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:test": "node build.mjs --test",
+    "package": "node build.mjs --zip",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node build.mjs --test && node ../scripts/test-chrome-extension.ts"
+  },
+  "dependencies": {
+    "extpay": "3.1.3"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.8",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.1",
+    "typescript": "^7.0.2"
+  }
+}
