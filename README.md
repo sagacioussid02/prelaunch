@@ -32,6 +32,7 @@ lib/rapidapi.ts        RapidAPI gateway secret check + per-plan safety limits
 docs/                  RapidAPI and Apify Store listing drafts, OpenAPI spec for POST /api/v1/check
 .actor/                Apify Actor definition, input/dataset schemas, Dockerfile, Store README
 apify/                 Apify Actor entry (pay per scan): input, billing loop, quick + full scans
+extension/             Chrome extension (Manifest V3): scans the open tab in the browser, paid full report via ExtensionPay
 lib/checks/index.ts    central registry — new checks plug in here
 lib/scanner.ts         parallel runner (per-check timeout), grading
 lib/report.ts          shareable report HTML + SVG badge renderer
@@ -207,6 +208,28 @@ limit. Definition in `.actor/`, code in `apify/` (it bundles `lib/` with
 esbuild into the Playwright image). Prices ($0.03 per quick scan, $0.09 per full scan) and publishing steps:
 [docs/apify-listing.md](docs/apify-listing.md).
 
+## Chrome extension (Prelaunch for Chrome)
+
+A Manifest V3 extension in `extension/` that checks the site in the open
+tab from the user's own browser. It runs Prelaunch's own fetch-only
+passive checks and grading (`lib/checks`, `lib/scanner.ts`), bundled with
+esbuild; three server-only modules (check registry, headless browser, SSRF
+guard) are swapped for browser stand-ins in `extension/src/shims`. Because
+requests come from the user's browser, it can check what the hosted
+scanner can't reach: localhost, Vercel previews behind Vercel
+Authentication, and staging sites behind a login. Nothing is sent to
+Prelaunch.
+
+- **Free:** the three quick checks (exposed `.env`, public source maps,
+  security headers) with the grade, score and counts.
+- **Paid (ExtensionPay):** every fetch-only passive check (adds SEO
+  basics, custom 404, error verboseness) with each finding, where it is,
+  the fix, and Markdown/JSON export.
+
+Build, load-unpacked and publishing steps: [extension/README.md](extension/README.md).
+Store listing copy, permission justifications and the pricing proposal:
+[docs/chrome-web-store-listing.md](docs/chrome-web-store-listing.md).
+
 ## Run the tests
 
 ```bash
@@ -232,6 +255,7 @@ node scripts/test-ci-auth.ts     # GitHub Action server side: keys, OIDC verific
 node scripts/test-api-check.ts   # pay-per-call API: gateway secret, 3 checks on leaky/clean fixtures, SSRF, per-user/host/global limits
 node scripts/test-ci-action.ts   # GitHub Action: target/summary helpers, full runs against stub Prelaunch + GitHub APIs
 node scripts/test-apify-actor.ts # Apify Actor: input, per-scan billing + spending limit, quick/full scans, schemas (end-to-end once apify/ is built)
+node scripts/test-chrome-extension.ts # Chrome extension: release manifest, built worker (free/paid tiers, host scoping, parity with the quick check), popup in jsdom (needs `npm install` in extension/)
 node scripts/scan-once.ts <url>  # one-off scan, writes report.html
 ```
 

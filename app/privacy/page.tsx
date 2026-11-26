@@ -84,6 +84,18 @@ export default function PrivacyPage() {
         deletion. Ask, and we&rsquo;ll delete your data — contact below.
       </p>
 
+      <h2 className="section-title">Chrome extension</h2>
+      <p className="muted">
+        The Prelaunch Chrome extension checks the site in your open tab from your own browser. It
+        reads that site only after you press Scan and allow access to it, fetches pages on that
+        site only (with your browser&rsquo;s cookies for it, so a preview or staging site you are
+        signed in to can be checked), and keeps the result in your browser for 10 minutes. Nothing
+        about the sites you scan or the results is sent to us. Paid features use ExtensionPay: it
+        keeps an anonymous key in the extension&rsquo;s storage to recognise your purchase, and if
+        you pay, ExtensionPay and Stripe process the payment and receive your email address under
+        their own privacy policies.
+      </p>
+
       <h2 className="section-title">Cookies and tracking</h2>
       <p className="muted">
         We do not use advertising or cross-site tracking cookies, and we do not sell personal data.
