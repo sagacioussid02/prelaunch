@@ -110,6 +110,56 @@ for (const s of ["canceled", "unpaid", "incomplete", "incomplete_expired", "paus
     "mapping: item period end takes precedence over subscription field",
     both.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
   );
+  // Mixed intervals: items renew on different dates; the earliest wins,
+  // as Stripe's pre-basil subscription-level field reported.
+  const mixed = subscriptionFromStripeObject(
+    {
+      id: "sub_5",
+      customer: "cus_5",
+      status: "active",
+      items: {
+        data: [
+          { current_period_end: 1820000000 },
+          { current_period_end: 1790000000 },
+        ],
+      },
+    } as never,
+    "mixed@example.com",
+  );
+  check(
+    "mapping: multi-item subscription uses the earliest item period end",
+    mixed.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
+  );
+  // Pre-basil webhook payload: items exist but carry no period end, so
+  // the subscription-level field is still used.
+  const legacy = subscriptionFromStripeObject(
+    {
+      id: "sub_6",
+      customer: "cus_6",
+      status: "active",
+      current_period_end: 1790000000,
+      items: { data: [{}, { current_period_end: null }] },
+    } as never,
+    "legacy@example.com",
+  );
+  check(
+    "mapping: pre-basil items without period end fall back to subscription field",
+    legacy.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
+  );
+  // A first item without a period end does not hide a later item's.
+  const gap = subscriptionFromStripeObject(
+    {
+      id: "sub_7",
+      customer: "cus_7",
+      status: "active",
+      items: { data: [{}, { current_period_end: 1790000000 }] },
+    } as never,
+    "gap@example.com",
+  );
+  check(
+    "mapping: item missing a period end is skipped",
+    gap.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
+  );
 }
 
 // Webhook routing: subscription events upsert, checkout fetches,

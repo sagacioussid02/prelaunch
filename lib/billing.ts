@@ -81,6 +81,26 @@ export function getStripe(): Stripe | null {
   return stripeClient;
 }
 
+/**
+ * Pure: the subscription's next period end from its items (basil+).
+ * Each item carries its own period; with mixed intervals they differ,
+ * and Stripe's pre-basil subscription-level field reported the
+ * smallest one, so the earliest item end is used here too. Returns
+ * null when no item carries a numeric value.
+ */
+export function itemsPeriodEnd(
+  items: Array<{ current_period_end?: number | null }> | null | undefined,
+): number | null {
+  let earliest: number | null = null;
+  for (const item of items ?? []) {
+    const end = item?.current_period_end;
+    if (typeof end === "number" && (earliest === null || end < earliest)) {
+      earliest = end;
+    }
+  }
+  return earliest;
+}
+
 /** Pure mapping: a Stripe Subscription object (+ resolved email) to our record. */
 export function subscriptionFromStripeObject(
   sub: {
@@ -99,10 +119,9 @@ export function subscriptionFromStripeObject(
   // Stripe API "basil" (pinned by stripe-node 18+) moved
   // current_period_end off the subscription onto its items, so the
   // subscription-level field reads as absent on the retrieve path.
-  // Prefer the first item's value; fall back to the legacy
-  // subscription-level field for older API shapes / webhook payloads.
-  const periodEnd =
-    sub.items?.data?.[0]?.current_period_end ?? sub.current_period_end;
+  // Read it from the items; fall back to the legacy subscription-level
+  // field for webhook endpoints still on a pre-basil API version.
+  const periodEnd = itemsPeriodEnd(sub.items?.data) ?? sub.current_period_end;
   return {
     email: email.trim().toLowerCase(),
     stripeCustomerId: customerId,
