@@ -80,6 +80,36 @@ for (const s of ["canceled", "unpaid", "incomplete", "incomplete_expired", "paus
     "mapping: object customer, missing period end is null",
     noEnd.stripeCustomerId === "cus_2" && noEnd.currentPeriodEnd === null,
   );
+  // Basil shape (stripe-node 18+): current_period_end lives only on
+  // the subscription items, not on the subscription itself.
+  const basil = subscriptionFromStripeObject(
+    {
+      id: "sub_3",
+      customer: "cus_3",
+      status: "active",
+      items: { data: [{ current_period_end: 1790000000 }] },
+    } as never,
+    "basil@example.com",
+  );
+  check(
+    "mapping: basil shape reads period end from items",
+    basil.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
+  );
+  // When both shapes are present, the item value wins.
+  const both = subscriptionFromStripeObject(
+    {
+      id: "sub_4",
+      customer: "cus_4",
+      status: "active",
+      current_period_end: 1700000000,
+      items: { data: [{ current_period_end: 1790000000 }] },
+    } as never,
+    "both@example.com",
+  );
+  check(
+    "mapping: item period end takes precedence over subscription field",
+    both.currentPeriodEnd === new Date(1790000000 * 1000).toISOString(),
+  );
 }
 
 // Webhook routing: subscription events upsert, checkout fetches,

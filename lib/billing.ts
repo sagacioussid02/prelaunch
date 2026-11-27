@@ -88,19 +88,29 @@ export function subscriptionFromStripeObject(
     customer: string | { id: string };
     status: string;
     current_period_end?: number | null;
+    items?: {
+      data?: Array<{ current_period_end?: number | null }> | null;
+    } | null;
   },
   email: string,
 ): Subscription {
   const customerId =
     typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+  // Stripe API "basil" (pinned by stripe-node 18+) moved
+  // current_period_end off the subscription onto its items, so the
+  // subscription-level field reads as absent on the retrieve path.
+  // Prefer the first item's value; fall back to the legacy
+  // subscription-level field for older API shapes / webhook payloads.
+  const periodEnd =
+    sub.items?.data?.[0]?.current_period_end ?? sub.current_period_end;
   return {
     email: email.trim().toLowerCase(),
     stripeCustomerId: customerId,
     stripeSubscriptionId: sub.id,
     status: sub.status,
     currentPeriodEnd:
-      typeof sub.current_period_end === "number"
-        ? new Date(sub.current_period_end * 1000).toISOString()
+      typeof periodEnd === "number"
+        ? new Date(periodEnd * 1000).toISOString()
         : null,
     updatedAt: new Date().toISOString(),
   };
